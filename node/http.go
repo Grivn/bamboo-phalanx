@@ -71,6 +71,8 @@ func (n *node) handleRoot(w http.ResponseWriter, r *http.Request) {
 	req.NodeID = n.id
 	req.Timestamp = time.Now()
 	req.ID = r.RequestURI
+	log.Infof("transaction command: command value %+v, nodeID %+v, timestamp %+v, id %+v", req.Command.Value, req.NodeID, req.Timestamp, req.ID)
+
 	n.TxChan <- req
 
 	//reply := <-req.C

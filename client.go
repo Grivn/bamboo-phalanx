@@ -209,12 +209,16 @@ func (c *HTTPClient) JSONPut(key db.Key, value db.Value) (db.Value, error) {
 // QuorumPut concurrently write values to majority of nodes
 // TODO get headers
 func (c *HTTPClient) AllPut(key db.Key, value db.Value) error {
+
+	log.Infof("all put key: %+v", key)
+
 	var wait sync.WaitGroup
 	var err error
 	for id, ip := range c.HTTP {
 		wait.Add(1)
 		go func(id int, ip string) {
-			url := ip + "/" + strconv.Itoa(int(key)+id)
+			//url := ip + "/" + strconv.Itoa(int(key)+id)
+			url := ip + "/" + strconv.Itoa(int(key))
 			err = c.rest(url, value)
 			wait.Done()
 		}(id.Node(), ip)

@@ -123,6 +123,7 @@ func (b *Benchmark) worker(keys <-chan int, result chan<- time.Duration) {
 		//s = time.Now()
 		value := make([]byte, config.GetConfig().PayloadSize)
 		rand.Read(value)
+		log.Infof("client send value: %+v", value)
 		//rand.Read(value)
 		_ = b.db.Write(k, value)
 		//res, err := strconv.Atoi(r)
@@ -148,7 +149,8 @@ func (b *Benchmark) next() int {
 	switch b.Distribution {
 	case "uniform":
 		key = int(count)
-		count += uint64(config.GetConfig().N() - config.GetConfig().ByzNo)
+		//count += uint64(config.GetConfig().N() - config.GetConfig().ByzNo)
+		count += uint64(1)
 	default:
 		log.Fatalf("unknown distribution %s", b.Distribution)
 	}
