@@ -3,8 +3,10 @@ package replica
 import (
 	"encoding/gob"
 	"fmt"
+	"github.com/Grivn/phalanx/common/protos"
 	fhs "github.com/gitferry/bamboo/fasthostuff"
 	"github.com/gitferry/bamboo/lbft"
+	"github.com/gogo/protobuf/proto"
 	"time"
 
 	"go.uber.org/atomic"
@@ -28,6 +30,9 @@ type Replica struct {
 	node.Node
 	Safety
 	election.Election
+
+	openPhalanx bool
+
 	pd              *mempool.Producer
 	pm              *pacemaker.Pacemaker
 	start           chan bool // signal to start the node
@@ -85,10 +90,14 @@ func NewReplica(id identity.NodeID, alg string, isByz bool) *Replica {
 	r.Register(pacemaker.TMO{}, r.HandleTmo)
 	r.Register(message.Transaction{}, r.handleTxn)
 	r.Register(message.Query{}, r.handleQuery)
+	r.Register(protos.ConsensusMessage{}, r.HandleConsensusMessage)
 	gob.Register(blockchain.Block{})
 	gob.Register(blockchain.Vote{})
 	gob.Register(pacemaker.TC{})
 	gob.Register(pacemaker.TMO{})
+	gob.Register(protos.ConsensusMessage{})
+
+	r.openPhalanx = true
 
 	// Is there a better way to reduce the number of parameters?
 	switch alg {
@@ -134,6 +143,12 @@ func (r *Replica) HandleTmo(tmo pacemaker.TMO) {
 	r.eventChan <- tmo
 }
 
+func (r *Replica) HandleConsensusMessage(message protos.ConsensusMessage) {
+	r.startSignal()
+	log.Debugf("[%v] received a consensus-message from %v", r.ID(), message.From)
+	r.eventChan <- message
+}
+
 // handleQuery replies a query with the statistics of the node
 func (r *Replica) handleQuery(m message.Query) {
 	realAveProposeTime := float64(r.totalProposeDuration.Milliseconds()) / float64(r.processedNo)
@@ -154,7 +169,12 @@ func (r *Replica) handleQuery(m message.Query) {
 }
 
 func (r *Replica) handleTxn(m message.Transaction) {
-	r.pd.AddTxn(&m)
+	command := &protos.Command{}
+	err := proto.Unmarshal(m.Command.Value, command)
+	if err != nil {
+		panic(err)
+	}
+	go r.Node.ProcessCommand(command)
 	r.startSignal()
 	// the first leader kicks off the protocol
 	if r.pm.GetCurView() == 0 && r.IsLeader(r.ID(), 1) {
@@ -166,17 +186,19 @@ func (r *Replica) handleTxn(m message.Transaction) {
 /* Processors */
 
 func (r *Replica) processCommittedBlock(block *blockchain.Block) {
-	if block.Proposer == r.ID() {
-		for _, txn := range block.Payload {
-			// only record the delay of transactions from the local memory pool
-			delay := time.Now().Sub(txn.Timestamp)
-			r.totalDelay += delay
-			r.latencyNo++
-		}
-	}
 	r.committedNo++
 	r.totalCommittedTx += len(block.Payload)
 	log.Infof("[%v] the block is committed, No. of transactions: %v, view: %v, current view: %v, id: %x", r.ID(), len(block.Payload), block.View, r.pm.GetCurView(), block.ID)
+
+	if block.PBatch == nil {
+		return
+	}
+
+	if pErr := r.Node.SetStable(block.PBatch); pErr != nil {
+		r.Node.Restore()
+	} else {
+		_ = r.Commit(block.PBatch)
+	}
 }
 
 func (r *Replica) processForkedBlock(block *blockchain.Block) {
@@ -199,14 +221,22 @@ func (r *Replica) processNewView(newView types.View) {
 
 func (r *Replica) proposeBlock(view types.View) {
 	createStart := time.Now()
-	block := r.Safety.MakeProposal(view, r.pd.GeneratePayload())
+
+	// generate different block types according to trusted target
+	var block *blockchain.Block
+	if r.openPhalanx && view > 1 {
+		block = r.Safety.MakePProposal(view)
+	} else {
+		block = r.Safety.MakeProposal(view, r.pd.GeneratePayload())
+	}
+
 	r.totalBlockSize += len(block.Payload)
 	r.proposedNo++
 	createEnd := time.Now()
 	createDuration := createEnd.Sub(createStart)
 	block.Timestamp = time.Now()
 	r.totalCreateDuration += createDuration
-	r.Broadcast(block)
+	r.Node.Broadcast(block)
 	_ = r.Safety.ProcessBlock(block)
 	r.voteStart = time.Now()
 }
@@ -290,6 +320,8 @@ func (r *Replica) Start() {
 			r.voteNo++
 		case pacemaker.TMO:
 			r.Safety.ProcessRemoteTmo(&v)
+		case protos.ConsensusMessage:
+			r.ProcessConsensusMessage(&v)
 		}
 	}
 }

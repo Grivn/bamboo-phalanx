@@ -7,6 +7,8 @@ import (
 	"github.com/gitferry/bamboo/identity"
 	"github.com/gitferry/bamboo/message"
 	"github.com/gitferry/bamboo/types"
+
+	pCommonProto "github.com/Grivn/phalanx/common/protos"
 )
 
 type Block struct {
@@ -18,7 +20,7 @@ type Block struct {
 	PrevID    crypto.Identifier
 	Sig       crypto.Signature
 	ID        crypto.Identifier
-	Ts        time.Duration
+	PBatch    *pCommonProto.PartialOrderBatch
 }
 
 type rawBlock struct {
@@ -26,6 +28,16 @@ type rawBlock struct {
 	QC       *QC
 	Proposer identity.NodeID
 	Payload  []string
+	PrevID   crypto.Identifier
+	Sig      crypto.Signature
+	ID       crypto.Identifier
+}
+
+type rawPBlock struct {
+	types.View
+	QC       *QC
+	Proposer identity.NodeID
+	Payload  *pCommonProto.PartialOrderBatch
 	PrevID   crypto.Identifier
 	Sig      crypto.Signature
 	ID       crypto.Identifier
@@ -43,6 +55,18 @@ func MakeBlock(view types.View, qc *QC, prevID crypto.Identifier, payload []*mes
 	return b
 }
 
+// MakePBlock creates an unsigned block with phalanx payload
+func MakePBlock(view types.View, qc *QC, prevID crypto.Identifier, pBatch *pCommonProto.PartialOrderBatch, proposer identity.NodeID) *Block {
+	b := new(Block)
+	b.View = view
+	b.Proposer = proposer
+	b.QC = qc
+	b.PBatch = pBatch
+	b.PrevID = prevID
+	b.makePID(proposer)
+	return b
+}
+
 func (b *Block) makeID(nodeID identity.NodeID) {
 	raw := &rawBlock{
 		View:     b.View,
@@ -55,6 +79,19 @@ func (b *Block) makeID(nodeID identity.NodeID) {
 		payloadIDs = append(payloadIDs, txn.ID)
 	}
 	raw.Payload = payloadIDs
+	b.ID = crypto.MakeID(raw)
+	// TODO: uncomment the following
+	b.Sig, _ = crypto.PrivSign(crypto.IDToByte(b.ID), nodeID, nil)
+}
+
+func (b *Block) makePID(nodeID identity.NodeID) {
+	raw := &rawPBlock{
+		View:     b.View,
+		QC:       b.QC,
+		Proposer: b.Proposer,
+		PrevID:   b.PrevID,
+		Payload:  b.PBatch,
+	}
 	b.ID = crypto.MakeID(raw)
 	// TODO: uncomment the following
 	b.Sig, _ = crypto.PrivSign(crypto.IDToByte(b.ID), nodeID, nil)

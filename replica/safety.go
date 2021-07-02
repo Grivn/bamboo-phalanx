@@ -12,6 +12,11 @@ type Safety interface {
 	ProcessVote(vote *blockchain.Vote)
 	ProcessRemoteTmo(tmo *pacemaker.TMO)
 	ProcessLocalTmo(view types.View)
-	MakeProposal(view types.View, payload []*message.Transaction) *blockchain.Block
 	GetChainStatus() string
+
+	// MakeProposal is used to generate block in normal phase.
+	MakeProposal(view types.View, payload []*message.Transaction) *blockchain.Block
+
+	// MakePProposal is used to generate block in phalanx phase.
+	MakePProposal(view types.View) *blockchain.Block
 }

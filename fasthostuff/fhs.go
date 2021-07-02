@@ -2,6 +2,7 @@ package fhs
 
 import (
 	"fmt"
+	"github.com/Grivn/phalanx/common/protos"
 	"sync"
 
 	"github.com/gitferry/bamboo/blockchain"
@@ -194,6 +195,23 @@ func (f *Fhs) ProcessLocalTmo(view types.View) {
 func (f *Fhs) MakeProposal(view types.View, payload []*message.Transaction) *blockchain.Block {
 	qc := f.forkChoice()
 	block := blockchain.MakeBlock(view, qc, qc.BlockID, payload, f.ID())
+	return block
+}
+
+func (f *Fhs) MakePProposal(view types.View) *blockchain.Block {
+	qc := f.forkChoice()
+
+	parentBlock, _ := f.bc.GetBlockByID(qc.BlockID)
+
+	var priori *protos.PartialOrderBatch
+
+	if parentBlock != nil {
+		priori, _ = f.Node.MakeProposal(parentBlock.PBatch)
+	} else {
+		priori, _ = f.Node.MakeProposal(nil)
+	}
+
+	block := blockchain.MakePBlock(view, qc, qc.BlockID, priori, f.ID())
 	return block
 }
 

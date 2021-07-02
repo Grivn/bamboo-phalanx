@@ -1,7 +1,8 @@
 package benchmark
 
 import (
-	"math/rand"
+	"github.com/Grivn/phalanx/common/types"
+	"github.com/gogo/protobuf/proto"
 	"sync"
 	"time"
 
@@ -107,39 +108,17 @@ func (b *Benchmark) Run() {
 	log.Infof("Throughput = %f\n", float64(len(b.latency))/t.Seconds())
 	log.Infof("genCount: %d, sendCount: %d, confirmCount: %d", genCount, sendCount, confirmCount)
 	log.Info(stat)
-
-	//stat.WriteFile("latency")
-	//b.History.WriteFile("history")
 }
 
 func (b *Benchmark) worker(keys <-chan int, result chan<- time.Duration) {
-	//var s time.Time
-	//var e time.Time
-	//var v int
-	//var err error
 	for k := range keys {
-		//op := new(operation)
-		//v = rand.Int()
-		//s = time.Now()
-		value := make([]byte, config.GetConfig().PayloadSize)
-		rand.Read(value)
-		log.Infof("client send value: %+v", value)
+		// todo marshal the phalanx command and carry it by 'value'
+		//value := make([]byte, config.GetConfig().PayloadSize)
 		//rand.Read(value)
-		_ = b.db.Write(k, value)
-		//res, err := strconv.Atoi(r)
-		//log.Debugf("latency is %v", time.Duration(res)*time.Nanosecond)
-		//e = time.Now()
-		//op.input = v
-		//op.start = s.Sub(b.startTime).Nanoseconds()
-		//if err == nil {
-		//op.end = e.Sub(b.startTime).Nanoseconds()
-		//result <- e.Sub(s)
-		//result <- time.Duration(res) * time.Nanosecond
-		//} else {
-		//op.end = math.MaxInt64
-		//log.Error(err)
-		//}
-		//b.History.AddOperation(k, op)
+		//log.Infof("client send value: %+v", value)
+		command := types.GenerateRandCommand(1, config.GetConfig().PayloadSize)
+		payload, _ := proto.Marshal(command)
+		_ = b.db.Write(k, payload)
 	}
 }
 

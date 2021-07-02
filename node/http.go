@@ -1,9 +1,11 @@
 package node
 
 import (
+	"github.com/Grivn/phalanx/common/protos"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/log"
 	"github.com/gitferry/bamboo/message"
+	"github.com/gogo/protobuf/proto"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -66,12 +68,18 @@ func (n *node) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	v, _ := ioutil.ReadAll(r.Body)
 	//log.Debugf("[%v] payload is %x", n.id, v)
+	command := &protos.Command{}
+	err := proto.Unmarshal(v, command)
+	if err != nil {
+		return
+	}
 	req.Command.Value = v
 	req.C = ppFree.Get().(chan message.TransactionReply)
 	req.NodeID = n.id
 	req.Timestamp = time.Now()
 	req.ID = r.RequestURI
-	log.Infof("transaction command: command value %+v, nodeID %+v, timestamp %+v, id %+v", req.Command.Value, req.NodeID, req.Timestamp, req.ID)
+	n.TimeCalculator.RecvTs(command.Digest)
+	log.Infof("transaction command: command value %+v, nodeID %+v, timestamp %+v, id %+v", command, req.NodeID, req.Timestamp, req.ID)
 
 	n.TxChan <- req
 

@@ -217,8 +217,11 @@ func (c *HTTPClient) AllPut(key db.Key, value db.Value) error {
 	for id, ip := range c.HTTP {
 		wait.Add(1)
 		go func(id int, ip string) {
-			//url := ip + "/" + strconv.Itoa(int(key)+id)
-			url := ip + "/" + strconv.Itoa(int(key))
+			// todo phalanx adapter: multi-broadcast client for phalanx servers
+			target := int(key)
+			// if it isn't a phalanx bft consensus, the client generate different message for each server.
+			// which means, target += id
+			url := ip + "/" + strconv.Itoa(target)
 			err = c.rest(url, value)
 			wait.Done()
 		}(id.Node(), ip)

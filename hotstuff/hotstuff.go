@@ -2,6 +2,7 @@ package hotstuff
 
 import (
 	"fmt"
+	"github.com/Grivn/phalanx/common/protos"
 	"sync"
 
 	"github.com/gitferry/bamboo/blockchain"
@@ -155,6 +156,7 @@ func (hs *HotStuff) ProcessRemoteTmo(tmo *pacemaker.TMO) {
 	}
 	log.Debugf("[%v] a tc is built for view %v", hs.ID(), tc.View)
 	hs.processTC(tc)
+	hs.Node.Restore()
 }
 
 func (hs *HotStuff) ProcessLocalTmo(view types.View) {
@@ -164,13 +166,30 @@ func (hs *HotStuff) ProcessLocalTmo(view types.View) {
 		NodeID: hs.ID(),
 		HighQC: hs.GetHighQC(),
 	}
-	hs.Broadcast(tmo)
+	hs.Node.Broadcast(tmo)
 	hs.ProcessRemoteTmo(tmo)
 }
 
 func (hs *HotStuff) MakeProposal(view types.View, payload []*message.Transaction) *blockchain.Block {
 	qc := hs.forkChoice()
 	block := blockchain.MakeBlock(view, qc, qc.BlockID, payload, hs.ID())
+	return block
+}
+
+func (hs *HotStuff) MakePProposal(view types.View) *blockchain.Block {
+	qc := hs.forkChoice()
+
+	parentBlock, _ := hs.bc.GetBlockByID(qc.BlockID)
+
+	var priori *protos.PartialOrderBatch
+
+	if parentBlock != nil {
+		priori, _ = hs.Node.MakeProposal(parentBlock.PBatch)
+	} else {
+		priori, _ = hs.Node.MakeProposal(nil)
+	}
+
+	block := blockchain.MakePBlock(view, qc, qc.BlockID, priori, hs.ID())
 	return block
 }
 
@@ -277,6 +296,11 @@ func (hs *HotStuff) votingRule(block *blockchain.Block) (bool, error) {
 	}
 	if (block.View <= hs.lastVotedView) || (parentBlock.View < hs.preferredView) {
 		return false, nil
+	}
+	if block.PBatch != nil {
+		if pErr := hs.Node.Verify(block.PBatch); pErr != nil {
+			return false, pErr
+		}
 	}
 	return true, nil
 }
