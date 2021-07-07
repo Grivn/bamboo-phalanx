@@ -2,6 +2,7 @@ package streamlet
 
 import (
 	"fmt"
+	"github.com/Grivn/phalanx/common/protos"
 	"github.com/gitferry/bamboo/blockchain"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/crypto"
@@ -174,6 +175,28 @@ func (sl *Streamlet) MakeProposal(view types.View, payload []*message.Transactio
 		AggSig:    nil,
 		Signature: nil,
 	}, prevID, payload, sl.ID())
+	return block
+}
+
+func (sl *Streamlet) MakePProposal(view types.View) *blockchain.Block {
+	prevID := sl.forkChoice()
+
+	prevBlock, _ := sl.bc.GetBlockByID(prevID)
+
+	var priori *protos.PartialOrderBatch
+
+	if prevBlock != nil {
+		priori, _ = sl.Node.MakeProposal(prevBlock.PBatch)
+	} else {
+		priori, _ = sl.Node.MakeProposal(nil)
+	}
+
+	block := blockchain.MakePBlock(view, &blockchain.QC{
+		View:      0,
+		BlockID:   prevID,
+		AggSig:    nil,
+		Signature: nil,
+	}, prevID, priori, sl.ID())
 	return block
 }
 

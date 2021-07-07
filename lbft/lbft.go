@@ -2,6 +2,7 @@ package lbft
 
 import (
 	"fmt"
+	"github.com/Grivn/phalanx/common/protos"
 	"github.com/gitferry/bamboo/blockchain"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/crypto"
@@ -174,6 +175,28 @@ func (lb *Lbft) MakeProposal(view types.View, payload []*message.Transaction) *b
 		AggSig:    nil,
 		Signature: nil,
 	}, prevID, payload, lb.ID())
+	return block
+}
+
+func (lb *Lbft) MakePProposal(view types.View) *blockchain.Block {
+	prevID := lb.forkChoice()
+
+	prevBlock, _ := lb.bc.GetBlockByID(prevID)
+
+	var priori *protos.PartialOrderBatch
+
+	if prevBlock != nil {
+		priori, _ = lb.Node.MakeProposal(prevBlock.PBatch)
+	} else {
+		priori, _ = lb.Node.MakeProposal(nil)
+	}
+
+	block := blockchain.MakePBlock(view, &blockchain.QC{
+		View:      0,
+		BlockID:   prevID,
+		AggSig:    nil,
+		Signature: nil,
+	}, prevID, priori, lb.ID())
 	return block
 }
 
