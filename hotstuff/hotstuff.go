@@ -164,13 +164,30 @@ func (hs *HotStuff) ProcessLocalTmo(view types.View) {
 		NodeID: hs.ID(),
 		HighQC: hs.GetHighQC(),
 	}
-	hs.Broadcast(tmo)
+	hs.Node.Broadcast(tmo)
 	hs.ProcessRemoteTmo(tmo)
 }
 
 func (hs *HotStuff) MakeProposal(view types.View, payload []*message.Transaction) *blockchain.Block {
 	qc := hs.forkChoice()
 	block := blockchain.MakeBlock(view, qc, qc.BlockID, payload, hs.ID())
+	return block
+}
+
+func (hs *HotStuff) MakePProposal(view types.View) *blockchain.Block {
+	qc := hs.forkChoice()
+
+	priori, _ := hs.Node.MakeProposal()
+
+	for {
+		if len(priori.Partials) != 0 {
+			break
+		}
+
+		priori, _ = hs.Node.MakeProposal()
+	}
+
+	block := blockchain.MakePBlock(view, qc, qc.BlockID, priori, hs.ID())
 	return block
 }
 

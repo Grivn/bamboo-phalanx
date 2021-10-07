@@ -197,6 +197,23 @@ func (th *Tchs) MakeProposal(view types.View, payload []*message.Transaction) *b
 	return block
 }
 
+func (th *Tchs) MakePProposal(view types.View) *blockchain.Block {
+	qc := th.forkChoice()
+
+	priori, _ := th.Node.MakeProposal()
+
+	for {
+		if len(priori.Partials) != 0 {
+			break
+		}
+
+		priori, _ = th.Node.MakeProposal()
+	}
+
+	block := blockchain.MakePBlock(view, qc, qc.BlockID, priori, th.ID())
+	return block
+}
+
 func (th *Tchs) forkChoice() *blockchain.QC {
 	choice := th.GetHighQC()
 	// to simulate TC under forking attack

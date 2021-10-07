@@ -1,6 +1,8 @@
 package node
 
 import (
+	"github.com/Grivn/phalanx/common/protos"
+	phalanx "github.com/Grivn/phalanx/core"
 	"net/http"
 	"reflect"
 	"sync"
@@ -15,6 +17,7 @@ import (
 // Node is the primary access point for every replica
 // it includes networking, state machine and RESTful API server
 type Node interface {
+	phalanx.Provider
 	socket.Socket
 	//Database
 	ID() identity.NodeID
@@ -23,11 +26,13 @@ type Node interface {
 	Forward(id identity.NodeID, r message.Transaction)
 	Register(m interface{}, f interface{})
 	IsByz() bool
+	QueryTotalCommittedTxs() int
 }
 
 // node implements Node interface
 type node struct {
 	id identity.NodeID
+	phalanx.Provider
 
 	socket.Socket
 	//Database
@@ -40,20 +45,26 @@ type node struct {
 
 	sync.RWMutex
 	forwards map[string]*message.Transaction
+
+	totalCommittedTx     int
 }
 
 // NewNode creates a new Node object from configuration
 func NewNode(id identity.NodeID, isByz bool) Node {
-	return &node{
-		id:     id,
-		isByz:  isByz,
-		Socket: socket.NewSocket(id, config.Configuration.Addrs),
+	n := &node{
+		id:             id,
+		isByz:          isByz,
+		Socket:         socket.NewSocket(id, config.Configuration.Addrs),
 		//Database:    NewDatabase(),
 		MessageChan: make(chan interface{}, config.Configuration.ChanBufferSize),
 		TxChan:      make(chan interface{}, config.Configuration.ChanBufferSize),
 		handles:     make(map[string]reflect.Value),
 		forwards:    make(map[string]*message.Transaction),
 	}
+
+	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), n, n, n)
+
+	return n
 }
 
 func (n *node) ID() identity.NodeID {
@@ -207,4 +218,59 @@ func (n *node) Forward(id identity.NodeID, m message.Transaction) {
 	n.forwards[m.Command.String()] = &m
 	n.Unlock()
 	n.Send(id, m)
+}
+
+func (n *node) QueryTotalCommittedTxs() int {
+	t := n.totalCommittedTx
+	n.totalCommittedTx = 0
+	return t
+}
+
+//==================================================================================
+//                              phalanx service
+//==================================================================================
+
+func (n *node) CommandExecution(commandD string, txs []*protos.Transaction, seqNo uint64, timestamp int64) {
+	log.Infof("[%v] the block is committed, No. of transactions: %v, id: %d", n.ID(), len(txs), seqNo)
+
+	n.totalCommittedTx += len(txs)
+}
+
+func (n *node) BroadcastCommand(command *protos.Command) {
+	go n.Socket.Broadcast(*command)
+	go n.ProcessCommand(command)
+}
+
+func (n *node) BroadcastPCM(message *protos.ConsensusMessage) {
+	go n.Socket.Broadcast(*message)
+	go n.ProcessConsensusMessage(message)
+}
+
+func (n *node) UnicastPCM(message *protos.ConsensusMessage) {
+	if message.To == uint64(n.id.Node()) {
+		go n.ProcessConsensusMessage(message)
+		return
+	}
+	go n.Send(identity.NewNodeID(int(message.To)), message)
+}
+
+func (n *node) Debug(v ...interface{}) {
+	log.Debug(v...)
+}
+func (n *node) Debugf(format string, v ...interface{}) {
+	log.Debugf(format, v...)
+}
+
+func (n *node) Info(v ...interface{}) {
+	log.Info(v...)
+}
+func (n *node) Infof(format string, v ...interface{}) {
+	log.Infof(format, v...)
+}
+
+func (n *node) Error(v ...interface{}) {
+	log.Error(v...)
+}
+func (n *node) Errorf(format string, v ...interface{}) {
+	log.Errorf(format, v...)
 }
