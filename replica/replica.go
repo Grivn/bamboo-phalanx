@@ -167,20 +167,17 @@ func (r *Replica) handleQuery(m message.Query) {
 	requestRate := float64(r.pd.TotalReceivedTxNo()) / time.Now().Sub(r.startTime).Seconds()
 	//committedRate := float64(r.committedNo) / time.Now().Sub(r.startTime).Seconds()
 	aveRoundTime := float64(r.totalRoundTime.Milliseconds()) / float64(r.roundNo)
-	latency := float64(r.totalDelay.Milliseconds()) / float64(r.latencyNo)
-	r.totalCommittedTx = r.Node.QueryTotalCommittedTxs()
-	r.thrus += fmt.Sprintf("Time: %v s. Throughput: %v txs/s\n", time.Now().Sub(r.startTime).Seconds(), float64(r.totalCommittedTx)/time.Now().Sub(r.tmpTime).Seconds())
-	r.totalCommittedTx = 0
-	r.tmpTime = time.Now()
+	nodeQuery := r.Node.QueryTotalCommittedTxs()
+	r.thrus += fmt.Sprintf("Time: %v s. Throughput: %v txs/s\n", time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput)
 	//status := fmt.Sprintf("chain status is: %s\nCommitted rate is %v.\nAve. block size is %v.\nAve. trans. delay is %v ms.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is %f txs/s.\n", r.Safety.GetChainStatus(), committedRate, aveBlockSize, aveTransDelay, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, latency, throughput)
-	status := fmt.Sprintf("chain status is: %s\nAve. block size is %v.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is: \n%v", r.Safety.GetChainStatus(), aveBlockSize, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, latency, r.thrus)
+	status := fmt.Sprintf("chain status is: %s\nAve. block size is %v.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is: \n%v", r.Safety.GetChainStatus(), aveBlockSize, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, nodeQuery.Latency, r.thrus)
 	m.Reply(message.QueryReply{Info: status})
 }
 
 func (r *Replica) handleTxn(m message.Transaction) {
 	payload, _ := json.Marshal(m)
 	tx := pCommonTypes.GenerateTransaction(payload)
-	r.Node.ProcessTransaction(tx)
+	r.Node.ReceiveTransaction(tx)
 	r.startSignal()
 	// the first leader kicks off the protocol
 	if r.pm.GetCurView() == 0 && r.IsLeader(r.ID(), 1) {
@@ -198,7 +195,7 @@ func (r *Replica) processCommittedBlock(block *blockchain.Block) {
 	if block.PBatch == nil {
 		return
 	}
-	err := r.Commit(block.PBatch)
+	err := r.Node.CommitProposal(block.PBatch)
 	if err != nil {
 		panic(err)
 	}
@@ -289,16 +286,17 @@ func (r *Replica) ListenCommittedBlocks() {
 func (r *Replica) startSignal() {
 	if !r.isStarted.Load() {
 		r.startTime = time.Now()
-		r.tmpTime = time.Now()
 		log.Debugf("[%v] is boosting", r.ID())
 		r.isStarted.Store(true)
 		r.start <- true
+		r.Node.StartSignal()
 	}
 }
 
 // Start starts event loop
 func (r *Replica) Start() {
-	go r.Run()
+	go r.Node.Run()
+	r.Node.RunPhalanx()
 	// wait for the start signal
 	<-r.start
 	go r.ListenLocalEvent()
@@ -324,9 +322,9 @@ func (r *Replica) Start() {
 		case pacemaker.TMO:
 			r.Safety.ProcessRemoteTmo(&v)
 		case pCommonProto.ConsensusMessage:
-			r.ProcessConsensusMessage(&v)
+			_ = r.Node.ReceiveConsensusMessage(&v)
 		case pCommonProto.Command:
-			r.ProcessCommand(&v)
+			r.Node.ReceiveCommand(&v)
 		}
 	}
 }

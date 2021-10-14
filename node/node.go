@@ -2,10 +2,12 @@ package node
 
 import (
 	"github.com/Grivn/phalanx/common/protos"
+	pCommonTypes "github.com/Grivn/phalanx/common/types"
 	phalanx "github.com/Grivn/phalanx/core"
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/identity"
@@ -17,7 +19,12 @@ import (
 // Node is the primary access point for every replica
 // it includes networking, state machine and RESTful API server
 type Node interface {
-	phalanx.Provider
+	RunPhalanx()
+	phalanx.Executor
+	phalanx.Receiver
+	phalanx.Generator
+	phalanx.Communicator
+
 	socket.Socket
 	//Database
 	ID() identity.NodeID
@@ -26,7 +33,13 @@ type Node interface {
 	Forward(id identity.NodeID, r message.Transaction)
 	Register(m interface{}, f interface{})
 	IsByz() bool
-	QueryTotalCommittedTxs() int
+	StartSignal()
+	QueryTotalCommittedTxs() QueryMessage
+}
+
+type QueryMessage struct {
+	Throughput float64
+	Latency    float64
 }
 
 // node implements Node interface
@@ -46,7 +59,11 @@ type node struct {
 	sync.RWMutex
 	forwards map[string]*message.Transaction
 
-	totalCommittedTx     int
+	totalCommittedTx int
+	throughputAnchor time.Time
+
+	totalLatency float64
+	latencyCount int
 }
 
 // NewNode creates a new Node object from configuration
@@ -62,7 +79,7 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		forwards:    make(map[string]*message.Transaction),
 	}
 
-	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), n, n, n)
+	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), pCommonTypes.SingleCommandSize, n, n, n)
 
 	return n
 }
@@ -108,6 +125,10 @@ func (n *node) Run() {
 		go n.txn()
 	}
 	n.http()
+}
+
+func (n *node) RunPhalanx() {
+	n.Provider.Run()
 }
 
 func (n *node) txn() {
@@ -163,54 +184,6 @@ func (n *node) handle() {
 	}
 }
 
-/*
-func (n *node) Forward(id NodeID, m Transaction) {
-	key := m.Command.Key
-	url := config.HTTPAddrs[id] + "/" + strconv.Itoa(int(key))
-
-	log.Debugf("Node %v forwarding %v to %s", n.NodeID(), m, id)
-
-	method := http.MethodGet
-	var body io.Reader
-	if !m.Command.IsRead() {
-		method = http.MethodPut
-		body = bytes.NewBuffer(m.Command.Value)
-	}
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	req.Header.Set(HTTPClientID, string(n.id))
-	req.Header.Set(HTTPCommandID, strconv.Itoa(m.Command.CommandID))
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Error(err)
-		m.TransactionReply(TransactionReply{
-			Command: m.Command,
-			Err:     err,
-		})
-		return
-	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusOK {
-		b, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			log.Error(err)
-		}
-		m.TransactionReply(TransactionReply{
-			Command: m.Command,
-			Value:   Value(b),
-		})
-	} else {
-		m.TransactionReply(TransactionReply{
-			Command: m.Command,
-			Err:     errors.New(res.Status),
-		})
-	}
-}
-*/
-
 func (n *node) Forward(id identity.NodeID, m message.Transaction) {
 	log.Debugf("Node %v forwarding %v to %s", n.ID(), m, id)
 	m.NodeID = n.id
@@ -220,35 +193,63 @@ func (n *node) Forward(id identity.NodeID, m message.Transaction) {
 	n.Send(id, m)
 }
 
-func (n *node) QueryTotalCommittedTxs() int {
-	t := n.totalCommittedTx
-	n.totalCommittedTx = 0
-	return t
+func (n *node) StartSignal() {
+	n.throughputAnchor = time.Now()
+}
+
+func (n *node) QueryTotalCommittedTxs() QueryMessage {
+
+	// calculate throughput and latency.
+	throughput := float64(n.totalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
+	//latency := float64(n.totalLatency.Milliseconds())
+
+	// reset throughput info.
+	//n.totalCommittedTx = 0
+	//n.throughputAnchor = time.Now()
+
+	// reset latency info.
+	//n.totalLatency = 0
+	//n.latencyCount = 0
+
+	return QueryMessage{
+		Throughput: throughput,
+		Latency:    n.totalLatency,
+	}
 }
 
 //==================================================================================
 //                              phalanx service
 //==================================================================================
 
-func (n *node) CommandExecution(commandD string, txs []*protos.Transaction, seqNo uint64, timestamp int64) {
-	log.Infof("[%v] the block is committed, No. of transactions: %v, id: %d", n.ID(), len(txs), seqNo)
+func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp int64) {
+	log.Infof("[%v] the block is committed, No. of transactions: %v, id: %d", n.ID(), len(command.Content), seqNo)
 
-	n.totalCommittedTx += len(txs)
+	for _, tx := range command.Content {
+		//rawTx := &message.Transaction{}
+		//_ = json.Unmarshal(tx.Payload, rawTx)
+
+		// add the total committed tx for throughput.
+		n.totalCommittedTx++
+
+		// calculate latency for current transaction.
+		n.totalLatency = pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp)
+		//n.latencyCount++
+	}
 }
 
 func (n *node) BroadcastCommand(command *protos.Command) {
 	go n.Socket.Broadcast(*command)
-	go n.ProcessCommand(command)
+	go n.ReceiveCommand(command)
 }
 
 func (n *node) BroadcastPCM(message *protos.ConsensusMessage) {
 	go n.Socket.Broadcast(*message)
-	go n.ProcessConsensusMessage(message)
+	go n.ReceiveConsensusMessage(message)
 }
 
 func (n *node) UnicastPCM(message *protos.ConsensusMessage) {
 	if message.To == uint64(n.id.Node()) {
-		go n.ProcessConsensusMessage(message)
+		go n.ReceiveConsensusMessage(message)
 		return
 	}
 	go n.Send(identity.NewNodeID(int(message.To)), message)

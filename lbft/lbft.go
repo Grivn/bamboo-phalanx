@@ -183,7 +183,7 @@ func (lb *Lbft) MakePProposal(view types.View) *blockchain.Block {
 	priori, _ := lb.Node.MakeProposal()
 
 	for {
-		if len(priori.Partials) != 0 {
+		if priori != nil {
 			break
 		}
 

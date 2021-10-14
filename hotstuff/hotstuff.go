@@ -180,7 +180,7 @@ func (hs *HotStuff) MakePProposal(view types.View) *blockchain.Block {
 	priori, _ := hs.Node.MakeProposal()
 
 	for {
-		if len(priori.Partials) != 0 {
+		if priori != nil {
 			break
 		}
 

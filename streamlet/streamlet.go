@@ -183,7 +183,7 @@ func (sl *Streamlet) MakePProposal(view types.View) *blockchain.Block {
 	priori, _ := sl.Node.MakeProposal()
 
 	for {
-		if len(priori.Partials) != 0 {
+		if priori != nil {
 			break
 		}
 

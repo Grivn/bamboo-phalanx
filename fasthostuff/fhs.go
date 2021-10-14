@@ -203,7 +203,7 @@ func (f *Fhs) MakePProposal(view types.View) *blockchain.Block {
 	priori, _ := f.Node.MakeProposal()
 
 	for {
-		if len(priori.Partials) != 0 {
+		if priori != nil {
 			break
 		}
 

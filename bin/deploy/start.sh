@@ -2,17 +2,15 @@
 ./pkill.sh
 
 start(){
-    SERVER_ADDR=(`cat public_ips.txt`)
-    for (( j=1; j<=$1; j++))
-    do
-      ssh -t $2@${SERVER_ADDR[j-1]} "cd /home/${2}/bamboo ; nohup ./run.sh ${j}"
-      sleep 0.1
-      echo replica ${j} is launched!
-    done
+  count=0
+  for line in `cat public_ips.txt`
+  do
+    count=$((count+1))
+    ssh -t "wanggr"@$line "cd ~/bamboo ; nohup ./run.sh $count"
+    sleep 0.1
+    echo replica $count is launched!
+  done
 }
 
-USERNAME="wanggr"
-MAXPEERNUM=(`wc -l public_ips.txt | awk '{ print $1 }'`)
-
 # update config.json to replicas
-start $MAXPEERNUM $USERNAME
+start
