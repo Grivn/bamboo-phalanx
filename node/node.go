@@ -21,7 +21,7 @@ import (
 type Node interface {
 	RunPhalanx()
 	phalanx.Executor
-	phalanx.Receiver
+	phalanx.Proposer
 	phalanx.Generator
 	phalanx.Communicator
 

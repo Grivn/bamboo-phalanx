@@ -25,3 +25,9 @@ cpu_*
 /package-lock.json
 
 *.log
+
+/bin/server
+/bin/client
+
+/bin/deploy/server
+/bin/deploy/client
