@@ -3,7 +3,7 @@
 kill_all_servers(){
     for line in `cat public_ips.txt`
     do
-       ssh -t "wanggr"@$line "pkill server ; rm ~/bamboo/server.pid"
+       ssh -t "wanggr"@$line "pkill server ; rm ~/bphalanx/server.pid"
     done
 }
 

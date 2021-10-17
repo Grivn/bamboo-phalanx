@@ -3,11 +3,11 @@
 distribute(){
     for line in `cat clients.txt`
     do
-       ssh "wanggr"@$line "mkdir bamboo"
+       ssh "wanggr"@$line "mkdir bphalanx"
        echo "---- upload client: wanggr@$line\n ----"
-       scp client ips.txt config.json runClient.sh closeClient.sh "wanggr"@$line:~/bamboo
-       ssh "wanggr"@$line "chmod 777 ~/bamboo/runClient.sh"
-       ssh "wanggr"@$line "chmod 777 ~/bamboo/closeClient.sh"
+       scp client ips.txt config.json runClient.sh closeClient.sh "wanggr"@$line:~/bphalanx
+       ssh "wanggr"@$line "chmod 777 ~/bphalanx/runClient.sh"
+       ssh "wanggr"@$line "chmod 777 ~/bphalanx/closeClient.sh"
     done
 }
 

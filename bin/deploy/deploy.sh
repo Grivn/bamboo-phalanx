@@ -3,9 +3,9 @@
 distribute(){
     for line in `cat public_ips.txt`
     do 
-      ssh "wanggr"@$line "mkdir ~/bamboo"
+      ssh "wanggr"@$line "mkdir ~/bphalanx"
       echo "---- upload replica: wanggr@$line \n ----"
-      scp server ips.txt run.sh "wanggr"@$line:~/bamboo
+      scp server ips.txt run.sh "wanggr"@$line:~/bphalanx
     done
 }
 
