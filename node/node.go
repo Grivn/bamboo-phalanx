@@ -79,7 +79,7 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		forwards:    make(map[string]*message.Transaction),
 	}
 
-	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), config.GetConfig().MemSize, n, n, n)
+	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), config.GetConfig().BSize, n, n, n)
 
 	return n
 }
