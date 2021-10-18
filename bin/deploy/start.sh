@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-./pkill.sh
+sh ./pkill.sh
 
 start(){
   count=0

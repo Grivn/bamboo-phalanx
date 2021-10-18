@@ -26,6 +26,9 @@ cpu_*
 
 *.log
 
+/client/client
+/server/server
+
 /bin/server
 /bin/client
 

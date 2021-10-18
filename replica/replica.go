@@ -2,7 +2,6 @@ package replica
 
 import (
 	"encoding/gob"
-	"encoding/json"
 	"fmt"
 	pCommonProto "github.com/Grivn/phalanx/common/protos"
 	pCommonTypes "github.com/Grivn/phalanx/common/types"
@@ -163,20 +162,45 @@ func (r *Replica) handleQuery(m message.Query) {
 	aveCreateDuration := float64(r.totalCreateDuration.Milliseconds()) / float64(r.proposedNo)
 	aveProcessTime := float64(r.totalProcessDuration.Milliseconds()) / float64(r.processedNo)
 	aveVoteProcessTime := float64(r.totalVoteTime.Milliseconds()) / float64(r.voteNo)
-	aveBlockSize := float64(r.totalBlockSize) / float64(r.proposedNo)
 	requestRate := float64(r.pd.TotalReceivedTxNo()) / time.Now().Sub(r.startTime).Seconds()
-	//committedRate := float64(r.committedNo) / time.Now().Sub(r.startTime).Seconds()
 	aveRoundTime := float64(r.totalRoundTime.Milliseconds()) / float64(r.roundNo)
-	nodeQuery := r.Node.QueryTotalCommittedTxs()
-	r.thrus += fmt.Sprintf("Time: %v s. Throughput: %v txs/s\n", time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput)
-	//status := fmt.Sprintf("chain status is: %s\nCommitted rate is %v.\nAve. block size is %v.\nAve. trans. delay is %v ms.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is %f txs/s.\n", r.Safety.GetChainStatus(), committedRate, aveBlockSize, aveTransDelay, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, latency, throughput)
-	status := fmt.Sprintf("chain status is: %s\nAve. block size is %v.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is: \n%v", r.Safety.GetChainStatus(), aveBlockSize, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, nodeQuery.Latency, r.thrus)
+
+	// query essential information from node instance.
+	nodeQuery := r.Node.QueryNode()
+
+	r.thrus += fmt.Sprintf(
+		"Time: %v s. Throughput: %v txs/s, Latency: %v\n",
+		time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput, nodeQuery.Latency,
+	)
+
+	status := fmt.Sprintf(
+		"chain status is: %s\n" +
+			"Ave. block size is %v.\n" +
+			"Ave. command size is %v.\n" +
+			"Ave. creation time is %f ms.\n" +
+			"Ave. processing time is %v ms.\n" +
+			"Ave. vote time is %v ms.\n" +
+			"Request rate is %f txs/s.\n" +
+			"Ave. round time is %f ms.\n" +
+			"Latency is %f ms.\n" +
+			"Throughput is: \n%v",
+			r.Safety.GetChainStatus(),
+			nodeQuery.AveBlockSize,
+			nodeQuery.AveCommandSize,
+			aveCreateDuration,
+			aveProcessTime,
+			aveVoteProcessTime,
+			requestRate,
+			aveRoundTime,
+			nodeQuery.Latency,
+			r.thrus,
+		)
 	m.Reply(message.QueryReply{Info: status})
 }
 
 func (r *Replica) handleTxn(m message.Transaction) {
-	payload, _ := json.Marshal(m)
-	tx := pCommonTypes.GenerateTransaction(payload)
+	//payload, _ := json.Marshal(m)
+	tx := pCommonTypes.GenerateTransaction(m.Command.Value, m.Timestamp.UnixNano())
 	r.Node.ReceiveTransaction(tx)
 	r.startSignal()
 	// the first leader kicks off the protocol

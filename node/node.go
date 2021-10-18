@@ -34,12 +34,14 @@ type Node interface {
 	Register(m interface{}, f interface{})
 	IsByz() bool
 	StartSignal()
-	QueryTotalCommittedTxs() QueryMessage
+	QueryNode() QueryMessage
 }
 
 type QueryMessage struct {
-	Throughput float64
-	Latency    float64
+	Throughput   float64
+	Latency      float64
+	AveBlockSize float64
+	AveCommandSize float64
 }
 
 // node implements Node interface
@@ -64,6 +66,12 @@ type node struct {
 
 	totalLatency float64
 	latencyCount int
+
+	totalBlockSize int
+	blockNumber int
+
+	totalCommandSize int
+	commandNumber int
 }
 
 // NewNode creates a new Node object from configuration
@@ -197,7 +205,7 @@ func (n *node) StartSignal() {
 	n.throughputAnchor = time.Now()
 }
 
-func (n *node) QueryTotalCommittedTxs() QueryMessage {
+func (n *node) QueryNode() QueryMessage {
 
 	// calculate throughput and latency.
 	throughput := float64(n.totalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
@@ -207,13 +215,17 @@ func (n *node) QueryTotalCommittedTxs() QueryMessage {
 	n.totalCommittedTx = 0
 	n.throughputAnchor = time.Now()
 
-	// reset latency info.
-	n.totalLatency = 0
-	n.latencyCount = 0
+	// block size
+	aveBlockSize := float64(n.totalBlockSize) / float64(n.blockNumber)
+
+	// command size
+	aveCommandSize := float64(n.totalCommandSize) / float64(n.commandNumber)
 
 	return QueryMessage{
-		Throughput: throughput,
-		Latency:    latency,
+		Throughput:     throughput,
+		Latency:        latency,
+		AveBlockSize:   aveBlockSize,
+		AveCommandSize: aveCommandSize,
 	}
 }
 
@@ -231,7 +243,15 @@ func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp
 		// calculate latency for current transaction.
 		n.totalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
 		n.latencyCount++
+
+		// calculate block size
+		n.totalBlockSize += len(tx.Payload)
+
+		// calculate command size
+		n.totalCommandSize += len(tx.Payload)
+		n.commandNumber++
 	}
+	n.blockNumber++
 }
 
 func (n *node) BroadcastCommand(command *protos.Command) {

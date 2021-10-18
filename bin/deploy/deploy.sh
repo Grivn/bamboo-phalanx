@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+sh ./pkill.sh
 
 distribute(){
     for line in `cat public_ips.txt`
