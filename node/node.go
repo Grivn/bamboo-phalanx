@@ -201,19 +201,19 @@ func (n *node) QueryTotalCommittedTxs() QueryMessage {
 
 	// calculate throughput and latency.
 	throughput := float64(n.totalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
-	//latency := float64(n.totalLatency.Milliseconds())
+	latency := n.totalLatency / float64(n.latencyCount)
 
 	// reset throughput info.
-	//n.totalCommittedTx = 0
-	//n.throughputAnchor = time.Now()
+	n.totalCommittedTx = 0
+	n.throughputAnchor = time.Now()
 
 	// reset latency info.
-	//n.totalLatency = 0
-	//n.latencyCount = 0
+	n.totalLatency = 0
+	n.latencyCount = 0
 
 	return QueryMessage{
 		Throughput: throughput,
-		Latency:    n.totalLatency,
+		Latency:    latency,
 	}
 }
 
@@ -225,15 +225,12 @@ func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp
 	log.Infof("[%v] the block is committed, No. of transactions: %v, id: %d", n.ID(), len(command.Content), seqNo)
 
 	for _, tx := range command.Content {
-		//rawTx := &message.Transaction{}
-		//_ = json.Unmarshal(tx.Payload, rawTx)
-
 		// add the total committed tx for throughput.
 		n.totalCommittedTx++
 
 		// calculate latency for current transaction.
-		n.totalLatency = pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp)
-		//n.latencyCount++
+		n.totalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
+		n.latencyCount++
 	}
 }
 
