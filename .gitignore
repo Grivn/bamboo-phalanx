@@ -31,3 +31,6 @@ cpu_*
 
 /bin/deploy/server
 /bin/deploy/client
+
+/bin/remotelocal/server
+/bin/remotelocal/client
