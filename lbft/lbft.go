@@ -177,6 +177,28 @@ func (lb *Lbft) MakeProposal(view types.View, payload []*message.Transaction) *b
 	return block
 }
 
+func (lb *Lbft) MakePProposal(view types.View) *blockchain.Block {
+	prevID := lb.forkChoice()
+
+	priori, _ := lb.Node.MakeProposal()
+
+	for {
+		if priori != nil {
+			break
+		}
+
+		priori, _ = lb.Node.MakeProposal()
+	}
+
+	block := blockchain.MakePBlock(view, &blockchain.QC{
+		View:      0,
+		BlockID:   prevID,
+		AggSig:    nil,
+		Signature: nil,
+	}, prevID, priori, lb.ID())
+	return block
+}
+
 func (lb *Lbft) forkChoice() crypto.Identifier {
 	var prevID crypto.Identifier
 	if lb.GetNotarizedHeight() == 0 {

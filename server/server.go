@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"sync"
 
+	_ "net/http/pprof"
+
 	"github.com/gitferry/bamboo"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/crypto"

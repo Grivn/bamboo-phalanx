@@ -3,6 +3,8 @@ package replica
 import (
 	"encoding/gob"
 	"fmt"
+	pCommonProto "github.com/Grivn/phalanx/common/protos"
+	pCommonTypes "github.com/Grivn/phalanx/common/types"
 	fhs "github.com/gitferry/bamboo/fasthostuff"
 	"github.com/gitferry/bamboo/lbft"
 	"time"
@@ -28,6 +30,9 @@ type Replica struct {
 	node.Node
 	Safety
 	election.Election
+
+	openPhalanx bool
+
 	pd              *mempool.Producer
 	pm              *pacemaker.Pacemaker
 	start           chan bool // signal to start the node
@@ -85,10 +90,16 @@ func NewReplica(id identity.NodeID, alg string, isByz bool) *Replica {
 	r.Register(pacemaker.TMO{}, r.HandleTmo)
 	r.Register(message.Transaction{}, r.handleTxn)
 	r.Register(message.Query{}, r.handleQuery)
+	r.Register(pCommonProto.ConsensusMessage{}, r.HandleConsensusMessage)
+	r.Register(pCommonProto.Command{}, r.HandleCommand)
 	gob.Register(blockchain.Block{})
 	gob.Register(blockchain.Vote{})
 	gob.Register(pacemaker.TC{})
 	gob.Register(pacemaker.TMO{})
+	gob.Register(pCommonProto.ConsensusMessage{})
+	gob.Register(pCommonProto.Command{})
+
+	r.openPhalanx = true
 
 	// Is there a better way to reduce the number of parameters?
 	switch alg {
@@ -134,27 +145,63 @@ func (r *Replica) HandleTmo(tmo pacemaker.TMO) {
 	r.eventChan <- tmo
 }
 
+func (r *Replica) HandleConsensusMessage(message pCommonProto.ConsensusMessage) {
+	r.startSignal()
+	log.Debugf("[%v] received a consensus-message from %v", r.ID(), message.From)
+	r.eventChan <- message
+}
+
+func (r *Replica) HandleCommand(command pCommonProto.Command) {
+	r.startSignal()
+	log.Debugf("[%v] received a command from %v", r.ID(), command.Author)
+	r.eventChan <- command
+}
+
 // handleQuery replies a query with the statistics of the node
 func (r *Replica) handleQuery(m message.Query) {
-	realAveProposeTime := float64(r.totalProposeDuration.Milliseconds()) / float64(r.processedNo)
+	aveCreateDuration := float64(r.totalCreateDuration.Milliseconds()) / float64(r.proposedNo)
 	aveProcessTime := float64(r.totalProcessDuration.Milliseconds()) / float64(r.processedNo)
-	aveVoteProcessTime := float64(r.totalVoteTime.Milliseconds()) / float64(r.roundNo)
-	aveBlockSize := float64(r.totalBlockSize) / float64(r.proposedNo)
-	//requestRate := float64(r.pd.TotalReceivedTxNo()) / time.Now().Sub(r.startTime).Seconds()
-	//committedRate := float64(r.committedNo) / time.Now().Sub(r.startTime).Seconds()
+	aveVoteProcessTime := float64(r.totalVoteTime.Milliseconds()) / float64(r.voteNo)
+	requestRate := float64(r.pd.TotalReceivedTxNo()) / time.Now().Sub(r.startTime).Seconds()
 	aveRoundTime := float64(r.totalRoundTime.Milliseconds()) / float64(r.roundNo)
-	aveProposeTime := aveRoundTime - aveProcessTime - aveVoteProcessTime
-	latency := float64(r.totalDelay.Milliseconds()) / float64(r.latencyNo)
-	//r.thrus += fmt.Sprintf("Time: %v s. Throughput: %v txs/s\n", time.Now().Sub(r.startTime).Seconds(), float64(r.totalCommittedTx)/time.Now().Sub(r.tmpTime).Seconds())
-	r.totalCommittedTx = 0
-	r.tmpTime = time.Now()
-	//status := fmt.Sprintf("chain status is: %s\nCommitted rate is %v.\nAve. block size is %v.\nAve. trans. delay is %v ms.\nAve. creation time is %f ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nRequest rate is %f txs/s.\nAve. round time is %f ms.\nLatency is %f ms.\nThroughput is %f txs/s.\n", r.Safety.GetChainStatus(), committedRate, aveBlockSize, aveTransDelay, aveCreateDuration, aveProcessTime, aveVoteProcessTime, requestRate, aveRoundTime, latency, throughput)
-	status := fmt.Sprintf("Ave. actual proposing time is %v ms.\nAve. proposing time is %v ms.\nAve. processing time is %v ms.\nAve. vote time is %v ms.\nAve. block size is %v.\nAve. round time is %v ms.\nLatency is %v ms.\n", realAveProposeTime, aveProposeTime, aveProcessTime, aveVoteProcessTime, aveBlockSize, aveRoundTime, latency)
+
+	// query essential information from node instance.
+	nodeQuery := r.Node.QueryNode()
+
+	r.thrus += fmt.Sprintf(
+		"Time: %v s. Throughput: %v txs/s, Latency: %v\n",
+		time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput, nodeQuery.Latency,
+	)
+
+	status := fmt.Sprintf(
+		"chain status is: %s\n" +
+			"Ave. block size is %v.\n" +
+			"Ave. command size is %v.\n" +
+			"Ave. creation time is %f ms.\n" +
+			"Ave. processing time is %v ms.\n" +
+			"Ave. vote time is %v ms.\n" +
+			"Request rate is %f txs/s.\n" +
+			"Ave. round time is %f ms.\n" +
+			"Latency is %f ms.\n" +
+			"Throughput is: \n%v",
+			r.Safety.GetChainStatus(),
+			nodeQuery.AveBlockSize,
+			nodeQuery.AveCommandSize,
+			aveCreateDuration,
+			aveProcessTime,
+			aveVoteProcessTime,
+			requestRate,
+			aveRoundTime,
+			nodeQuery.Latency,
+			r.thrus,
+		)
 	m.Reply(message.QueryReply{Info: status})
 }
 
 func (r *Replica) handleTxn(m message.Transaction) {
-	r.pd.AddTxn(&m)
+	//payload, _ := json.Marshal(m)
+	tx := pCommonTypes.GenerateTransaction(m.Command.Value, m.Timestamp.UnixNano())
+	r.Node.ReceiveTransaction(tx)
 	r.startSignal()
 	// the first leader kicks off the protocol
 	if r.pm.GetCurView() == 0 && r.IsLeader(r.ID(), 1) {
@@ -166,17 +213,16 @@ func (r *Replica) handleTxn(m message.Transaction) {
 /* Processors */
 
 func (r *Replica) processCommittedBlock(block *blockchain.Block) {
-	if block.Proposer == r.ID() {
-		for _, txn := range block.Payload {
-			// only record the delay of transactions from the local memory pool
-			delay := time.Now().Sub(txn.Timestamp)
-			r.totalDelay += delay
-			r.latencyNo++
-		}
-	}
 	r.committedNo++
 	r.totalCommittedTx += len(block.Payload)
 	log.Infof("[%v] the block is committed, No. of transactions: %v, view: %v, current view: %v, id: %x", r.ID(), len(block.Payload), block.View, r.pm.GetCurView(), block.ID)
+	if block.PBatch == nil {
+		return
+	}
+	err := r.Node.CommitProposal(block.PBatch)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (r *Replica) processForkedBlock(block *blockchain.Block) {
@@ -199,14 +245,22 @@ func (r *Replica) processNewView(newView types.View) {
 
 func (r *Replica) proposeBlock(view types.View) {
 	createStart := time.Now()
-	block := r.Safety.MakeProposal(view, r.pd.GeneratePayload())
+
+	// generate different block types according to trusted target
+	var block *blockchain.Block
+	if r.openPhalanx && view > 1 {
+		block = r.Safety.MakePProposal(view)
+	} else {
+		block = r.Safety.MakeProposal(view, r.pd.GeneratePayload())
+	}
+
 	r.totalBlockSize += len(block.Payload)
 	r.proposedNo++
 	createEnd := time.Now()
 	createDuration := createEnd.Sub(createStart)
 	block.Timestamp = time.Now()
 	r.totalCreateDuration += createDuration
-	r.Broadcast(block)
+	r.Node.Broadcast(block)
 	_ = r.Safety.ProcessBlock(block)
 	r.voteStart = time.Now()
 }
@@ -256,16 +310,17 @@ func (r *Replica) ListenCommittedBlocks() {
 func (r *Replica) startSignal() {
 	if !r.isStarted.Load() {
 		r.startTime = time.Now()
-		r.tmpTime = time.Now()
 		log.Debugf("[%v] is boosting", r.ID())
 		r.isStarted.Store(true)
 		r.start <- true
+		r.Node.StartSignal()
 	}
 }
 
 // Start starts event loop
 func (r *Replica) Start() {
-	go r.Run()
+	go r.Node.Run()
+	r.Node.RunPhalanx()
 	// wait for the start signal
 	<-r.start
 	go r.ListenLocalEvent()
@@ -290,6 +345,10 @@ func (r *Replica) Start() {
 			r.voteNo++
 		case pacemaker.TMO:
 			r.Safety.ProcessRemoteTmo(&v)
+		case pCommonProto.ConsensusMessage:
+			_ = r.Node.ReceiveConsensusMessage(&v)
+		case pCommonProto.Command:
+			r.Node.ReceiveCommand(&v)
 		}
 	}
 }

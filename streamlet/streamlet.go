@@ -177,6 +177,28 @@ func (sl *Streamlet) MakeProposal(view types.View, payload []*message.Transactio
 	return block
 }
 
+func (sl *Streamlet) MakePProposal(view types.View) *blockchain.Block {
+	prevID := sl.forkChoice()
+
+	priori, _ := sl.Node.MakeProposal()
+
+	for {
+		if priori != nil {
+			break
+		}
+
+		priori, _ = sl.Node.MakeProposal()
+	}
+
+	block := blockchain.MakePBlock(view, &blockchain.QC{
+		View:      0,
+		BlockID:   prevID,
+		AggSig:    nil,
+		Signature: nil,
+	}, prevID, priori, sl.ID())
+	return block
+}
+
 func (sl *Streamlet) forkChoice() crypto.Identifier {
 	var prevID crypto.Identifier
 	if sl.GetNotarizedHeight() == 0 {

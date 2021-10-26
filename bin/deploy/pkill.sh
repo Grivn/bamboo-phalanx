@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
 
 kill_all_servers(){
-    SERVER_ADDR=(`cat public_ips.txt`)
-    j=0
-    for data in ${SERVER_ADDR[@]}
+    for line in `cat public_ips.txt`
     do
-       let j+=1
-       ssh -t $1@${data} "echo ---- "success kill node ${j}" --- && pkill server ; rm /home/${1}/bamboo/server.pid"
+       ssh -t "wanggr"@$line "pkill server ; rm ~/bphalanx/server.pid"
     done
 }
 
-# NOTE!!!
-USERNAME="gaify"
-
 # distribute files
-kill_all_servers  $USERNAME
+kill_all_servers

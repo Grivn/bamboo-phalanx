@@ -21,3 +21,19 @@ cpu_*
 # vendor/
 .idea/
 .DS_Store
+/node_modules/
+/package-lock.json
+
+*.log
+
+/client/client
+/server/server
+
+/bin/server
+/bin/client
+
+/bin/deploy/server
+/bin/deploy/client
+
+/bin/remotelocal/server
+/bin/remotelocal/client
