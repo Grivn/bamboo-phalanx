@@ -23,6 +23,10 @@ func (pd *Producer) AddTxn(txn *message.Transaction) {
 	pd.mempool.addNew(txn)
 }
 
+func (pd *Producer) CalculateRequestTx() {
+	pd.mempool.totalReceived++
+}
+
 func (pd *Producer) CollectTxn(txn *message.Transaction) {
 	pd.mempool.addOld(txn)
 }

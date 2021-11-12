@@ -20,10 +20,7 @@ import (
 // it includes networking, state machine and RESTful API server
 type Node interface {
 	RunPhalanx()
-	phalanx.Executor
-	phalanx.Proposer
-	phalanx.Generator
-	phalanx.Communicator
+	phalanx.Provider
 
 	socket.Socket
 	//Database
@@ -38,7 +35,9 @@ type Node interface {
 }
 
 type QueryMessage struct {
+	TThroughput  float64
 	Throughput   float64
+	TLatency     float64
 	Latency      float64
 	AveBlockSize float64
 	AveCommandSize float64
@@ -62,10 +61,16 @@ type node struct {
 	forwards map[string]*message.Transaction
 
 	totalCommittedTx int
+	firstTimeAnchor time.Time
+
+	intervalCommittedTx int
 	throughputAnchor time.Time
 
 	totalLatency float64
 	latencyCount int
+
+	intervalLatency float64
+	intervalLatencyCount int
 
 	totalBlockSize int
 	blockNumber int
@@ -87,7 +92,7 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		forwards:    make(map[string]*message.Transaction),
 	}
 
-	n.Provider = phalanx.NewPhalanxProvider(4, uint64(id.Node()), config.GetConfig().BSize, n, n, n)
+	n.Provider = phalanx.NewPhalanxProvider(len(config.Configuration.Addrs), uint64(id.Node()), config.GetConfig().BSize, n, n, n)
 
 	return n
 }
@@ -203,17 +208,24 @@ func (n *node) Forward(id identity.NodeID, m message.Transaction) {
 
 func (n *node) StartSignal() {
 	n.throughputAnchor = time.Now()
+	n.firstTimeAnchor = time.Now()
 }
 
 func (n *node) QueryNode() QueryMessage {
 
 	// calculate throughput and latency.
-	throughput := float64(n.totalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
-	latency := n.totalLatency / float64(n.latencyCount)
+	totalThroughput := float64(n.totalCommittedTx)/time.Now().Sub(n.firstTimeAnchor).Seconds()
+	throughput := float64(n.intervalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
+	totalLatency := n.totalLatency / float64(n.latencyCount)
+	latency := n.intervalLatency / float64(n.intervalLatencyCount)
 
 	// reset throughput info.
-	n.totalCommittedTx = 0
+	n.intervalCommittedTx = 0
 	n.throughputAnchor = time.Now()
+
+	// reset interval latency.
+	n.intervalLatency = 0
+	n.intervalLatencyCount = 0
 
 	// block size
 	aveBlockSize := float64(n.totalBlockSize) / float64(n.blockNumber)
@@ -222,7 +234,9 @@ func (n *node) QueryNode() QueryMessage {
 	aveCommandSize := float64(n.totalCommandSize) / float64(n.commandNumber)
 
 	return QueryMessage{
+		TThroughput:    totalThroughput,
 		Throughput:     throughput,
+		TLatency:       totalLatency,
 		Latency:        latency,
 		AveBlockSize:   aveBlockSize,
 		AveCommandSize: aveCommandSize,
@@ -239,10 +253,13 @@ func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp
 	for _, tx := range command.Content {
 		// add the total committed tx for throughput.
 		n.totalCommittedTx++
+		n.intervalCommittedTx++
 
 		// calculate latency for current transaction.
 		n.totalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
+		n.intervalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
 		n.latencyCount++
+		n.intervalLatencyCount++
 
 		// calculate block size
 		n.totalBlockSize += len(tx.Payload)

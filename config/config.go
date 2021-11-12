@@ -46,6 +46,8 @@ type Config struct {
 	Slow           int             `json:"slow"`
 	Crash          int             `json:"crash"`
 
+	DupRecv int `json:"dup_recv"`
+
 	hasher string
 	signer string
 

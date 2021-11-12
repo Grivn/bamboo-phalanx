@@ -182,7 +182,8 @@ func (r *Replica) handleQuery(m message.Query) {
 			"Ave. vote time is %v ms.\n" +
 			"Request rate is %f txs/s.\n" +
 			"Ave. round time is %f ms.\n" +
-			"Latency is %f ms.\n" +
+			"Ave. Throughput is %f tx/s.\n" +
+			"Ave. Latency is %f ms.\n" +
 			"Throughput is: \n%v",
 			r.Safety.GetChainStatus(),
 			nodeQuery.AveBlockSize,
@@ -192,7 +193,8 @@ func (r *Replica) handleQuery(m message.Query) {
 			aveVoteProcessTime,
 			requestRate,
 			aveRoundTime,
-			nodeQuery.Latency,
+			nodeQuery.TThroughput,
+			nodeQuery.TLatency,
 			r.thrus,
 		)
 	m.Reply(message.QueryReply{Info: status})
@@ -200,8 +202,16 @@ func (r *Replica) handleQuery(m message.Query) {
 
 func (r *Replica) handleTxn(m message.Transaction) {
 	//payload, _ := json.Marshal(m)
-	tx := pCommonTypes.GenerateTransaction(m.Command.Value, m.Timestamp.UnixNano())
-	r.Node.ReceiveTransaction(tx)
+	tx := pCommonTypes.GenerateTransaction(m.Command.Value)
+	i := 0
+	for {
+		if i == config.GetConfig().DupRecv {
+			break
+		}
+		r.Node.ReceiveTransaction(tx)
+		r.pd.CalculateRequestTx()
+		i++
+	}
 	r.startSignal()
 	// the first leader kicks off the protocol
 	if r.pm.GetCurView() == 0 && r.IsLeader(r.ID(), 1) {
