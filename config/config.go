@@ -47,6 +47,7 @@ type Config struct {
 	Crash          int             `json:"crash"`
 
 	DupRecv int `json:"dup_recv"`
+	PhalanxMulti int `json:"phalanx_multi"`
 
 	hasher string
 	signer string

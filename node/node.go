@@ -31,6 +31,7 @@ type Node interface {
 	Register(m interface{}, f interface{})
 	IsByz() bool
 	StartSignal()
+	CommitBlock()
 	QueryNode() QueryMessage
 }
 
@@ -40,7 +41,8 @@ type QueryMessage struct {
 	TLatency     float64
 	Latency      float64
 	AveBlockSize float64
-	AveCommandSize float64
+	AvePayloadSize float64
+	AveRealBlock float64
 }
 
 // node implements Node interface
@@ -72,11 +74,10 @@ type node struct {
 	intervalLatency float64
 	intervalLatencyCount int
 
+	totalInnerBlock int
+	totalPayloadSize int
 	totalBlockSize int
-	blockNumber int
-
-	totalCommandSize int
-	commandNumber int
+	totalRealBlock int
 }
 
 // NewNode creates a new Node object from configuration
@@ -92,7 +93,7 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		forwards:    make(map[string]*message.Transaction),
 	}
 
-	n.Provider = phalanx.NewPhalanxProvider(len(config.Configuration.Addrs), uint64(id.Node()), config.GetConfig().BSize, n, n, n)
+	n.Provider = phalanx.NewPhalanxProvider(len(config.Configuration.Addrs), config.GetConfig().PhalanxMulti, uint64(id.Node()), config.GetConfig().BSize, n, n, n)
 
 	return n
 }
@@ -211,6 +212,10 @@ func (n *node) StartSignal() {
 	n.firstTimeAnchor = time.Now()
 }
 
+func (n *node) CommitBlock() {
+	n.totalInnerBlock++
+}
+
 func (n *node) QueryNode() QueryMessage {
 
 	// calculate throughput and latency.
@@ -228,10 +233,19 @@ func (n *node) QueryNode() QueryMessage {
 	n.intervalLatencyCount = 0
 
 	// block size
-	aveBlockSize := float64(n.totalBlockSize) / float64(n.blockNumber)
+	aveBlockSize := float64(n.totalBlockSize) / float64(n.totalRealBlock)
+	n.totalBlockSize = 0
 
 	// command size
-	aveCommandSize := float64(n.totalCommandSize) / float64(n.commandNumber)
+	avePayloadSize := float64(n.totalPayloadSize) / float64(n.totalRealBlock)
+
+	// committed block
+	aveRealBlock := float64(n.totalRealBlock) / float64(n.totalInnerBlock)
+
+	n.totalBlockSize = 0
+	n.totalPayloadSize = 0
+	n.totalInnerBlock = 0
+	n.totalRealBlock = 0
 
 	return QueryMessage{
 		TThroughput:    totalThroughput,
@@ -239,7 +253,8 @@ func (n *node) QueryNode() QueryMessage {
 		TLatency:       totalLatency,
 		Latency:        latency,
 		AveBlockSize:   aveBlockSize,
-		AveCommandSize: aveCommandSize,
+		AvePayloadSize: avePayloadSize,
+		AveRealBlock:   aveRealBlock,
 	}
 }
 
@@ -262,13 +277,12 @@ func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp
 		n.intervalLatencyCount++
 
 		// calculate block size
-		n.totalBlockSize += len(tx.Payload)
+		n.totalBlockSize++
 
 		// calculate command size
-		n.totalCommandSize += len(tx.Payload)
-		n.commandNumber++
+		n.totalPayloadSize += len(tx.Payload)
 	}
-	n.blockNumber++
+	n.totalRealBlock++
 }
 
 func (n *node) BroadcastCommand(command *protos.Command) {

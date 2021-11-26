@@ -40,3 +40,5 @@ cpu_*
 
 /bin/remotelocal/server
 /bin/remotelocal/client
+/bin/docker/client
+/bin/docker/server

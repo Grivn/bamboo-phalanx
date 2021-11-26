@@ -176,7 +176,8 @@ func (r *Replica) handleQuery(m message.Query) {
 	status := fmt.Sprintf(
 		"chain status is: %s\n" +
 			"Ave. block size is %v.\n" +
-			"Ave. command size is %v.\n" +
+			"Ave. payload size is %v.\n" +
+			"Ave. real block is %v.\n" +
 			"Ave. creation time is %f ms.\n" +
 			"Ave. processing time is %v ms.\n" +
 			"Ave. vote time is %v ms.\n" +
@@ -187,7 +188,8 @@ func (r *Replica) handleQuery(m message.Query) {
 			"Throughput is: \n%v",
 			r.Safety.GetChainStatus(),
 			nodeQuery.AveBlockSize,
-			nodeQuery.AveCommandSize,
+			nodeQuery.AvePayloadSize,
+			nodeQuery.AveRealBlock,
 			aveCreateDuration,
 			aveProcessTime,
 			aveVoteProcessTime,
@@ -225,6 +227,7 @@ func (r *Replica) handleTxn(m message.Transaction) {
 func (r *Replica) processCommittedBlock(block *blockchain.Block) {
 	r.committedNo++
 	r.totalCommittedTx += len(block.Payload)
+	r.Node.CommitBlock()
 	log.Infof("[%v] the block is committed, No. of transactions: %v, view: %v, current view: %v, id: %x", r.ID(), len(block.Payload), block.View, r.pm.GetCurView(), block.ID)
 	if block.PBatch == nil {
 		return
