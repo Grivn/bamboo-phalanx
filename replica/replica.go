@@ -168,37 +168,82 @@ func (r *Replica) handleQuery(m message.Query) {
 	// query essential information from node instance.
 	nodeQuery := r.Node.QueryNode()
 
+	phalanxMetrics := r.Node.QueryMetrics()
+
 	r.thrus += fmt.Sprintf(
 		"Time: %v s. Throughput: %v txs/s, Latency: %v\n",
 		time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput, nodeQuery.Latency,
 	)
 
+	committedCommandCount := phalanxMetrics.SafeCommandCount + phalanxMetrics.RiskCommandCount
+	safeRate := float64(phalanxMetrics.SafeCommandCount) / float64(committedCommandCount) * 100
+	riskRate := float64(phalanxMetrics.RiskCommandCount) / float64(committedCommandCount) * 100
+
+	totalCommands := phalanxMetrics.SafeCommandCount + phalanxMetrics.RiskCommandCount
+
+	safeFrontAttackedRate := float64(phalanxMetrics.FrontAttackFromSafe) / float64(totalCommands) * 100
+	riskFrontAttackedRate := float64(phalanxMetrics.FrontAttackFromRisk) / float64(totalCommands) * 100
+
+	totalFrontAttackedCommands := phalanxMetrics.FrontAttackFromSafe + phalanxMetrics.FrontAttackFromRisk
+	totalFrontAttackedRate := float64(totalFrontAttackedCommands) / float64(totalCommands) * 100
+
+	totalFrontAttackedInterval := phalanxMetrics.FrontAttackIntervalSafe + phalanxMetrics.FrontAttackIntervalRisk
+	totalFrontAttackedGiven := totalFrontAttackedCommands - totalFrontAttackedInterval
+	totalFrontAttackedIntervalRate := float64(totalFrontAttackedInterval) / float64(totalFrontAttackedCommands) * 100
+	totalFrontAttackedGivenRate := float64(totalFrontAttackedGiven) / float64(totalFrontAttackedCommands) * 100
+
 	status := fmt.Sprintf(
-		"chain status is: %s\n" +
-			"Ave. block size is %v.\n" +
-			"Ave. payload size is %v.\n" +
-			"Ave. real block is %v.\n" +
-			"Ave. creation time is %f ms.\n" +
-			"Ave. processing time is %v ms.\n" +
-			"Ave. vote time is %v ms.\n" +
-			"Request rate is %f txs/s.\n" +
-			"Ave. round time is %f ms.\n" +
-			"Ave. Throughput is %f tx/s.\n" +
-			"Ave. Latency is %f ms.\n" +
+		"chain status is: %s\n"+
+			"Ave. block size is %v.\n"+
+			"Ave. payload size is %v.\n"+
+			"Ave. real block is %v.\n"+
+			"Ave. creation time is %f ms.\n"+
+			"Ave. processing time is %v ms.\n"+
+			"Ave. vote time is %v ms.\n"+
+			"Request rate is %f txs/s.\n"+
+			"Ave. round time is %f ms.\n"+
+			"Ave. Throughput is %f tx/s.\n"+
+			"Ave. Latency is %f ms.\n"+
+			"Ave. Latency of Phalanx\n"+
+			"     Select Command %f ms.\n"+
+			"     Generate Order Log %f ms.\n"+
+			"     Commit Order Log %f ms.\n"+
+			"     Commit Command Info %f ms.\n"+
+			"Phalanx Command Rate\n"+
+			"     Total Commands %d\n"+
+			"     Safe Committed Commands %d(%f%%)\n"+
+			"     Risk Committed Commands %d(%f%%)\n"+
+			"     Front Attacked Commands %d(%f%%)\n"+
+			"     Front Attacked From Safe %d(%f%%)\n"+
+			"     Front Attacked From Risk %d(%f%%)\n"+
+			"     Front Attacked Given %d(%f%%)\n"+
+			"     Front Attacked Interval %d(%f%%)\n"+
 			"Throughput is: \n%v",
-			r.Safety.GetChainStatus(),
-			nodeQuery.AveBlockSize,
-			nodeQuery.AvePayloadSize,
-			nodeQuery.AveRealBlock,
-			aveCreateDuration,
-			aveProcessTime,
-			aveVoteProcessTime,
-			requestRate,
-			aveRoundTime,
-			nodeQuery.TThroughput,
-			nodeQuery.TLatency,
-			r.thrus,
-		)
+		r.Safety.GetChainStatus(),
+		nodeQuery.AveBlockSize,
+		nodeQuery.AvePayloadSize,
+		nodeQuery.AveRealBlock,
+		aveCreateDuration,
+		aveProcessTime,
+		aveVoteProcessTime,
+		requestRate,
+		aveRoundTime,
+		nodeQuery.TThroughput,
+		nodeQuery.TLatency,
+		phalanxMetrics.AvePackOrderLatency,
+		phalanxMetrics.AveOrderLatency,
+		phalanxMetrics.AveLogLatency,
+		phalanxMetrics.AveCommandInfoLatency,
+		totalCommands,
+		phalanxMetrics.SafeCommandCount, safeRate,
+		phalanxMetrics.RiskCommandCount, riskRate,
+		totalFrontAttackedCommands, totalFrontAttackedRate,
+		phalanxMetrics.FrontAttackFromSafe, safeFrontAttackedRate,
+		phalanxMetrics.FrontAttackFromRisk, riskFrontAttackedRate,
+		totalFrontAttackedGiven, totalFrontAttackedGivenRate,
+		totalFrontAttackedInterval, totalFrontAttackedIntervalRate,
+		r.thrus,
+	)
 	m.Reply(message.QueryReply{Info: status})
 }
 

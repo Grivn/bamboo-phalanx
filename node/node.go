@@ -36,13 +36,13 @@ type Node interface {
 }
 
 type QueryMessage struct {
-	TThroughput  float64
-	Throughput   float64
-	TLatency     float64
-	Latency      float64
-	AveBlockSize float64
+	TThroughput    float64
+	Throughput     float64
+	TLatency       float64
+	Latency        float64
+	AveBlockSize   float64
 	AvePayloadSize float64
-	AveRealBlock float64
+	AveRealBlock   float64
 }
 
 // node implements Node interface
@@ -63,29 +63,29 @@ type node struct {
 	forwards map[string]*message.Transaction
 
 	totalCommittedTx int
-	firstTimeAnchor time.Time
+	firstTimeAnchor  time.Time
 
 	intervalCommittedTx int
-	throughputAnchor time.Time
+	throughputAnchor    time.Time
 
 	totalLatency float64
 	latencyCount int
 
-	intervalLatency float64
+	intervalLatency      float64
 	intervalLatencyCount int
 
-	totalInnerBlock int
+	totalInnerBlock  int
 	totalPayloadSize int
-	totalBlockSize int
-	totalRealBlock int
+	totalBlockSize   int
+	totalRealBlock   int
 }
 
 // NewNode creates a new Node object from configuration
 func NewNode(id identity.NodeID, isByz bool) Node {
 	n := &node{
-		id:             id,
-		isByz:          isByz,
-		Socket:         socket.NewSocket(id, config.Configuration.Addrs),
+		id:     id,
+		isByz:  isByz,
+		Socket: socket.NewSocket(id, config.Configuration.Addrs),
 		//Database:    NewDatabase(),
 		MessageChan: make(chan interface{}, config.Configuration.ChanBufferSize),
 		TxChan:      make(chan interface{}, config.Configuration.ChanBufferSize),
@@ -93,7 +93,25 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		forwards:    make(map[string]*message.Transaction),
 	}
 
-	n.Provider = phalanx.NewPhalanxProvider(len(config.Configuration.Addrs), config.GetConfig().PhalanxMulti, uint64(id.Node()), config.GetConfig().BSize, n, n, n)
+	idNum := uint64(id.Node())
+
+	isPhalanxByz := false
+	if idNum <= uint64(config.GetConfig().PhalanxByzNo) {
+		isPhalanxByz = true
+	}
+
+	count := len(config.Configuration.Addrs)
+
+	n.Provider = phalanx.NewPhalanxProvider(
+		uint64(config.GetConfig().PhalanxOligarchyLeader),
+		isPhalanxByz,
+		time.Duration(config.GetConfig().PhalanxDurationLog)*time.Millisecond,
+		config.GetConfig().PhalanxInterval,
+		time.Duration(config.GetConfig().PhalanxDurationCommand)*time.Millisecond,
+		count, config.GetConfig().PhalanxMulti, config.GetConfig().PhalanxLogCount,
+		config.GetConfig().MemSize,
+		idNum, config.GetConfig().BSize,
+		n, n, n)
 
 	return n
 }
@@ -219,8 +237,8 @@ func (n *node) CommitBlock() {
 func (n *node) QueryNode() QueryMessage {
 
 	// calculate throughput and latency.
-	totalThroughput := float64(n.totalCommittedTx)/time.Now().Sub(n.firstTimeAnchor).Seconds()
-	throughput := float64(n.intervalCommittedTx)/time.Now().Sub(n.throughputAnchor).Seconds()
+	totalThroughput := float64(n.totalCommittedTx) / time.Now().Sub(n.firstTimeAnchor).Seconds()
+	throughput := float64(n.intervalCommittedTx) / time.Now().Sub(n.throughputAnchor).Seconds()
 	totalLatency := n.totalLatency / float64(n.latencyCount)
 	latency := n.intervalLatency / float64(n.intervalLatencyCount)
 
@@ -234,7 +252,6 @@ func (n *node) QueryNode() QueryMessage {
 
 	// block size
 	aveBlockSize := float64(n.totalBlockSize) / float64(n.totalRealBlock)
-	n.totalBlockSize = 0
 
 	// command size
 	avePayloadSize := float64(n.totalPayloadSize) / float64(n.totalRealBlock)
@@ -242,10 +259,10 @@ func (n *node) QueryNode() QueryMessage {
 	// committed block
 	aveRealBlock := float64(n.totalRealBlock) / float64(n.totalInnerBlock)
 
-	n.totalBlockSize = 0
-	n.totalPayloadSize = 0
-	n.totalInnerBlock = 0
-	n.totalRealBlock = 0
+	//n.totalBlockSize = 0
+	//n.totalPayloadSize = 0
+	//n.totalInnerBlock = 0
+	//n.totalRealBlock = 0
 
 	return QueryMessage{
 		TThroughput:    totalThroughput,
@@ -262,7 +279,9 @@ func (n *node) QueryNode() QueryMessage {
 //                              phalanx service
 //==================================================================================
 
-func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp int64) {
+func (n *node) CommandExecution(block pCommonTypes.InnerBlock, seqNo uint64) {
+	command := block.Command
+
 	log.Infof("[%v] the block is committed, No. of transactions: %v, id: %d", n.ID(), len(command.Content), seqNo)
 
 	for _, tx := range command.Content {
@@ -271,8 +290,8 @@ func (n *node) CommandExecution(command *protos.Command, seqNo uint64, timestamp
 		n.intervalCommittedTx++
 
 		// calculate latency for current transaction.
-		n.totalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
-		n.intervalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano() - tx.Timestamp) * 1000
+		n.totalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano()-tx.Timestamp) * 1000
+		n.intervalLatency += pCommonTypes.NanoToSecond(time.Now().UnixNano()-tx.Timestamp) * 1000
 		n.latencyCount++
 		n.intervalLatencyCount++
 

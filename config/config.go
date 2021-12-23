@@ -46,8 +46,17 @@ type Config struct {
 	Slow           int             `json:"slow"`
 	Crash          int             `json:"crash"`
 
-	DupRecv int `json:"dup_recv"`
-	PhalanxMulti int `json:"phalanx_multi"`
+	DupRecv         int `json:"dup_recv"`
+	PhalanxMulti    int `json:"phalanx_multi"`
+	PhalanxLogCount int `json:"phalanx_log_count"`
+	PhalanxByzNo    int `json:"phalanx_byz_no"`
+	PhalanxInterval int `json:"phalanx_interval"`
+
+	PhalanxDurationLog int `json:"phalanx_duration_log"`
+
+	PhalanxDurationCommand int `json:"phalanx_duration_command"`
+
+	PhalanxOligarchyLeader int `json:"phalanx_oligarchy_leader"`
 
 	hasher string
 	signer string

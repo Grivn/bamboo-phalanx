@@ -7,6 +7,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime/pprof"
+	"runtime/trace"
 	"time"
 )
 
@@ -36,8 +37,10 @@ func recordPProf(duration time.Duration) {
 	var (
 		cpuProfile string
 		memProfile string
+		traceProfile string
 		cpuFile    *os.File
 		memFile    *os.File
+		traceFile    *os.File
 	)
 
 	dir := "./debug"
@@ -53,8 +56,11 @@ func recordPProf(duration time.Duration) {
 	}
 	cpuProfile = fmt.Sprint("./debug/cpu_", time.Now().Format("2006-01-02-15-04-05"))
 	memProfile = fmt.Sprint("./debug/mem_", time.Now().Format("2006-01-02-15-04-05"))
+	traceProfile = fmt.Sprint("./debug/trace_", time.Now().Format("2006-01-02-15-04-05"))
 	cpuFile, _ = os.Create(cpuProfile)
 	_ = pprof.StartCPUProfile(cpuFile)
+	traceFile, _ = os.Create(traceProfile)
+	_ = trace.Start(traceFile)
 	tick := time.NewTicker(duration)
 
 	for {
@@ -62,14 +68,19 @@ func recordPProf(duration time.Duration) {
 		case <-tick.C:
 			pprof.StopCPUProfile()
 			_ = cpuFile.Close()
+			trace.Stop()
+			_ = traceFile.Close()
 			memFile, _ = os.Create(memProfile)
 			_ = pprof.WriteHeapProfile(memFile)
 			_ = memFile.Close()
 
 			cpuProfile = fmt.Sprint("./debug/cpu_", time.Now().Format("2006-01-02-15-04-05"))
 			memProfile = fmt.Sprint("./debug/mem_", time.Now().Format("2006-01-02-15-04-05"))
+			traceProfile = fmt.Sprint("./debug/trace_", time.Now().Format("2006-01-02-15-04-05"))
 			cpuFile, _ = os.Create(cpuProfile)
 			_ = pprof.StartCPUProfile(cpuFile)
+			traceFile, _ = os.Create(traceProfile)
+			_ = trace.Start(traceFile)
 		}
 	}
 }
