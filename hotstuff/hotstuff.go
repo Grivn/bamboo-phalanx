@@ -2,8 +2,6 @@ package hotstuff
 
 import (
 	"fmt"
-	"sync"
-
 	"github.com/gitferry/bamboo/blockchain"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/crypto"
@@ -13,6 +11,7 @@ import (
 	"github.com/gitferry/bamboo/node"
 	"github.com/gitferry/bamboo/pacemaker"
 	"github.com/gitferry/bamboo/types"
+	"sync"
 )
 
 const FORK = "fork"
@@ -178,14 +177,6 @@ func (hs *HotStuff) MakePProposal(view types.View) *blockchain.Block {
 	qc := hs.forkChoice()
 
 	priori, _ := hs.Node.MakeProposal()
-
-	for {
-		if priori != nil {
-			break
-		}
-
-		priori, _ = hs.Node.MakeProposal()
-	}
 
 	block := blockchain.MakePBlock(view, qc, qc.BlockID, priori, hs.ID())
 	return block

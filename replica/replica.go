@@ -64,6 +64,12 @@ type Replica struct {
 	proposedNo           int
 	processedNo          int
 	committedNo          int
+
+	preTotalSafe int
+	preTotalRisk int
+
+	preTotalSafeM int
+	preTotalRiskM int
 }
 
 // NewReplica creates a new replica instance
@@ -170,14 +176,47 @@ func (r *Replica) handleQuery(m message.Query) {
 
 	phalanxMetrics := r.Node.QueryMetrics()
 
-	r.thrus += fmt.Sprintf(
-		"Time: %v s. Throughput: %v txs/s, Latency: %v\n",
-		time.Now().Sub(r.startTime).Seconds(), nodeQuery.Throughput, nodeQuery.Latency,
-	)
-
 	committedCommandCount := phalanxMetrics.SafeCommandCount + phalanxMetrics.RiskCommandCount
 	safeRate := float64(phalanxMetrics.SafeCommandCount) / float64(committedCommandCount) * 100
 	riskRate := float64(phalanxMetrics.RiskCommandCount) / float64(committedCommandCount) * 100
+
+	periodTotalSafe := phalanxMetrics.SafeCommandCount - r.preTotalSafe
+	periodTotalRisk := phalanxMetrics.RiskCommandCount - r.preTotalRisk
+	periodTotalCount := periodTotalRisk + periodTotalSafe
+	periodSafeRate := float64(periodTotalSafe) / float64(periodTotalCount) * 100
+	periodRiskRate := float64(periodTotalRisk) / float64(periodTotalCount) * 100
+
+	r.preTotalSafe = phalanxMetrics.SafeCommandCount
+	r.preTotalRisk = phalanxMetrics.RiskCommandCount
+
+	committedCommandCountM := phalanxMetrics.MSafeCommandCount + phalanxMetrics.MRiskCommandCount
+	safeRateM := float64(phalanxMetrics.MSafeCommandCount) / float64(committedCommandCountM) * 100
+	riskRateM := float64(phalanxMetrics.MRiskCommandCount) / float64(committedCommandCountM) * 100
+
+	periodTotalSafeM := phalanxMetrics.MSafeCommandCount - r.preTotalSafeM
+	periodTotalRiskM := phalanxMetrics.MRiskCommandCount - r.preTotalRiskM
+	periodTotalCountM := periodTotalRiskM + periodTotalSafeM
+	periodSafeRateM := float64(periodTotalSafeM) / float64(periodTotalCountM) * 100
+	periodRiskRateM := float64(periodTotalRiskM) / float64(periodTotalCountM) * 100
+
+	r.preTotalSafeM = phalanxMetrics.MSafeCommandCount
+	r.preTotalRiskM = phalanxMetrics.MRiskCommandCount
+
+	r.thrus += fmt.Sprintf(
+		"Time: %.2f s. "+
+			"Throughput: %.2f txs/s, Latency: %.2f, "+
+			"Safe Rate: %.2f%%, Risk Rate: %.2f%%, "+
+			"Safe Rate (M): %.2f%%, Risk Rate (M): %.2f%%, "+
+			"%.1fms(p), %.1fms(c), %.1fms(s), %.1fms(o)\n",
+		time.Now().Sub(r.startTime).Seconds(),
+		nodeQuery.Throughput, nodeQuery.Latency,
+		periodSafeRate, periodRiskRate,
+		periodSafeRateM, periodRiskRateM,
+		phalanxMetrics.CurOrderLatency,
+		phalanxMetrics.CurLogLatency,
+		phalanxMetrics.CurCommitStreamLatency,
+		phalanxMetrics.CurCommandInfoLatency,
+	)
 
 	totalCommands := phalanxMetrics.SafeCommandCount + phalanxMetrics.RiskCommandCount
 
@@ -191,6 +230,19 @@ func (r *Replica) handleQuery(m message.Query) {
 	totalFrontAttackedGiven := totalFrontAttackedCommands - totalFrontAttackedInterval
 	totalFrontAttackedIntervalRate := float64(totalFrontAttackedInterval) / float64(totalFrontAttackedCommands) * 100
 	totalFrontAttackedGivenRate := float64(totalFrontAttackedGiven) / float64(totalFrontAttackedCommands) * 100
+
+	totalCommandsM := phalanxMetrics.MSafeCommandCount + phalanxMetrics.MRiskCommandCount
+
+	safeFrontAttackedRateM := float64(phalanxMetrics.MFrontAttackFromSafe) / float64(totalCommandsM) * 100
+	riskFrontAttackedRateM := float64(phalanxMetrics.MFrontAttackFromRisk) / float64(totalCommandsM) * 100
+
+	totalFrontAttackedCommandsM := phalanxMetrics.MFrontAttackFromSafe + phalanxMetrics.MFrontAttackFromRisk
+	totalFrontAttackedRateM := float64(totalFrontAttackedCommandsM) / float64(totalCommandsM) * 100
+
+	totalFrontAttackedIntervalM := phalanxMetrics.MFrontAttackIntervalSafe + phalanxMetrics.MFrontAttackIntervalRisk
+	totalFrontAttackedGivenM := totalFrontAttackedCommandsM - totalFrontAttackedIntervalM
+	totalFrontAttackedIntervalRateM := float64(totalFrontAttackedIntervalM) / float64(totalFrontAttackedCommandsM) * 100
+	totalFrontAttackedGivenRateM := float64(totalFrontAttackedGivenM) / float64(totalFrontAttackedCommandsM) * 100
 
 	status := fmt.Sprintf(
 		"chain status is: %s\n"+
@@ -208,8 +260,22 @@ func (r *Replica) handleQuery(m message.Query) {
 			"     Select Command %f ms.\n"+
 			"     Generate Order Log %f ms.\n"+
 			"     Commit Order Log %f ms.\n"+
+			"     Commit Query Stream %f ms.\n"+
 			"     Commit Command Info %f ms.\n"+
+			"Ave. Order Size %d\n"+
 			"Phalanx Command Rate\n"+
+			"     Receive Rate %.2f\n"+
+			"     Log Rate %.2f\n"+
+			"     Gen Log Rate %.2f\n"+
+			"     Total Commands %d\n"+
+			"     Safe Committed Commands %d(%f%%)\n"+
+			"     Risk Committed Commands %d(%f%%)\n"+
+			"     Front Attacked Commands %d(%f%%)\n"+
+			"     Front Attacked From Safe %d(%f%%)\n"+
+			"     Front Attacked From Risk %d(%f%%)\n"+
+			"     Front Attacked Given %d(%f%%)\n"+
+			"     Front Attacked Interval %d(%f%%)\n"+
+			"Phalanx Command Rate Medium\n"+
 			"     Total Commands %d\n"+
 			"     Safe Committed Commands %d(%f%%)\n"+
 			"     Risk Committed Commands %d(%f%%)\n"+
@@ -233,7 +299,12 @@ func (r *Replica) handleQuery(m message.Query) {
 		phalanxMetrics.AvePackOrderLatency,
 		phalanxMetrics.AveOrderLatency,
 		phalanxMetrics.AveLogLatency,
+		phalanxMetrics.AveCommitStreamLatency,
 		phalanxMetrics.AveCommandInfoLatency,
+		phalanxMetrics.AveOrderSize,
+		phalanxMetrics.CommandPS,
+		phalanxMetrics.LogPS,
+		phalanxMetrics.GenLogPS,
 		totalCommands,
 		phalanxMetrics.SafeCommandCount, safeRate,
 		phalanxMetrics.RiskCommandCount, riskRate,
@@ -242,6 +313,14 @@ func (r *Replica) handleQuery(m message.Query) {
 		phalanxMetrics.FrontAttackFromRisk, riskFrontAttackedRate,
 		totalFrontAttackedGiven, totalFrontAttackedGivenRate,
 		totalFrontAttackedInterval, totalFrontAttackedIntervalRate,
+		totalCommandsM,
+		phalanxMetrics.MSafeCommandCount, safeRateM,
+		phalanxMetrics.MRiskCommandCount, riskRateM,
+		totalFrontAttackedCommandsM, totalFrontAttackedRateM,
+		phalanxMetrics.MFrontAttackFromSafe, safeFrontAttackedRateM,
+		phalanxMetrics.MFrontAttackFromRisk, riskFrontAttackedRateM,
+		totalFrontAttackedGivenM, totalFrontAttackedGivenRateM,
+		totalFrontAttackedIntervalM, totalFrontAttackedIntervalRateM,
 		r.thrus,
 	)
 	m.Reply(message.QueryReply{Info: status})

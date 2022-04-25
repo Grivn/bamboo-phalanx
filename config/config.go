@@ -58,6 +58,10 @@ type Config struct {
 
 	PhalanxOligarchyLeader int `json:"phalanx_oligarchy_leader"`
 
+	PhalanxSelectedPropose int `json:"phalanx_selected_propose"`
+
+	PhalanxOpenLatency int `json:"phalanx_open_latency"`
+
 	hasher string
 	signer string
 
