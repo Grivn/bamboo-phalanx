@@ -34,10 +34,10 @@
   "phalanx_byz_no": 1,
   "phalanx_open_latency": 0,
   "phalanx_interval": 10,
-  "phalanx_oligarchy_leader": 1,
+  "phalanx_oligarchy_leader": 0,
   "phalanx_duration_log": 50,
   "phalanx_duration_command": 0,
-  "phalanx_selected_propose": 1,
+  "phalanx_selected_propose": 0,
   "benchmark": {
     "T": 1200,
     "N": 0,

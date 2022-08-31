@@ -102,18 +102,25 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 
 	count := len(config.Configuration.Addrs)
 
-	n.Provider = phalanx.NewPhalanxProvider(
-		uint64(config.GetConfig().PhalanxOligarchyLeader),
-		isPhalanxByz,
-		config.GetConfig().PhalanxOpenLatency,
-		time.Duration(config.GetConfig().PhalanxDurationLog)*time.Millisecond,
-		config.GetConfig().PhalanxInterval,
-		time.Duration(config.GetConfig().PhalanxDurationCommand)*time.Millisecond,
-		count, config.GetConfig().PhalanxMulti, config.GetConfig().PhalanxLogCount,
-		config.GetConfig().MemSize,
-		idNum, config.GetConfig().BSize,
-		n, n, n,
-		uint64(config.GetConfig().PhalanxSelectedPropose))
+	conf := phalanx.Config{
+		OLeader:     uint64(config.GetConfig().PhalanxOligarchyLeader),
+		Byz:         isPhalanxByz,
+		Duration:    time.Duration(config.GetConfig().PhalanxDurationLog) * time.Millisecond,
+		CDuration:   time.Duration(config.GetConfig().PhalanxDurationCommand) * time.Millisecond,
+		Interval:    config.GetConfig().PhalanxInterval,
+		OpenLatency: config.GetConfig().PhalanxOpenLatency,
+		N:           count,
+		Multi:       config.GetConfig().PhalanxMulti,
+		LogCount:    config.GetConfig().PhalanxLogCount,
+		MemSize:     config.GetConfig().MemSize,
+		CommandSize: config.GetConfig().BSize,
+		Author:      idNum,
+		Network:     n,
+		Exec:        n,
+		Logger:      n,
+		Selected:    uint64(config.GetConfig().PhalanxSelectedPropose),
+	}
+	n.Provider = phalanx.NewPhalanxProvider(conf)
 
 	return n
 }

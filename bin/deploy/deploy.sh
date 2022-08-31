@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-sh ./pkill.sh
+#sh ./pkill.sh
 
 distribute(){
     for line in `cat real_server.txt`
