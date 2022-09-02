@@ -1,14 +1,16 @@
 package node
 
 import (
-	"github.com/Grivn/phalanx/common/protos"
-	pCommonTypes "github.com/Grivn/phalanx/common/types"
-	phalanx "github.com/Grivn/phalanx/core"
+	"fmt"
 	"net/http"
 	"reflect"
 	"sync"
 	"time"
 
+	"github.com/Grivn/phalanx/common/mocks"
+	"github.com/Grivn/phalanx/common/protos"
+	pCommonTypes "github.com/Grivn/phalanx/common/types"
+	phalanx "github.com/Grivn/phalanx/core"
 	"github.com/gitferry/bamboo/config"
 	"github.com/gitferry/bamboo/identity"
 	"github.com/gitferry/bamboo/log"
@@ -102,6 +104,10 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 
 	count := len(config.Configuration.Addrs)
 
+	privKey, pubKeys, err := mocks.GenerateKeys(idNum, count)
+	if err != nil {
+		panic(fmt.Sprintf("generate keys error: %s", err))
+	}
 	conf := phalanx.Config{
 		OLeader:     uint64(config.GetConfig().PhalanxOligarchyLeader),
 		Byz:         isPhalanxByz,
@@ -115,6 +121,8 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 		MemSize:     config.GetConfig().MemSize,
 		CommandSize: config.GetConfig().BSize,
 		Author:      idNum,
+		PrivateKey:  privKey,
+		PublicKeys:  pubKeys,
 		Network:     n,
 		Exec:        n,
 		Logger:      n,
