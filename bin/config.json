@@ -37,7 +37,7 @@
   "phalanx_oligarchy_leader": 0,
   "phalanx_duration_log": 50,
   "phalanx_duration_command": 0,
-  "phalanx_selected_propose": 0,
+  "phalanx_selected_propose": 2,
   "benchmark": {
     "T": 1200,
     "N": 0,

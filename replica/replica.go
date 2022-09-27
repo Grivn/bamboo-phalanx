@@ -70,6 +70,9 @@ type Replica struct {
 
 	preTotalSafeM int
 	preTotalRiskM int
+
+	preTotalSafeTA int
+	preTotalRiskTA int
 }
 
 // NewReplica creates a new replica instance
@@ -202,16 +205,31 @@ func (r *Replica) handleQuery(m message.Query) {
 	r.preTotalSafeM = phalanxMetrics.MSafeCommandCount
 	r.preTotalRiskM = phalanxMetrics.MRiskCommandCount
 
+	committedCommandCountTA := phalanxMetrics.TASafeCommandCount + phalanxMetrics.TARiskCommandCount
+	safeRateTA := float64(phalanxMetrics.TASafeCommandCount) / float64(committedCommandCountTA) * 100
+	riskRateTA := float64(phalanxMetrics.TARiskCommandCount) / float64(committedCommandCountTA) * 100
+
+	periodTotalSafeTA := phalanxMetrics.TASafeCommandCount - r.preTotalSafeTA
+	periodTotalRiskTA := phalanxMetrics.TARiskCommandCount - r.preTotalRiskTA
+	periodTotalCountTA := periodTotalRiskTA + periodTotalSafeTA
+	periodSafeRateTA := float64(periodTotalSafeTA) / float64(periodTotalCountTA) * 100
+	periodRiskRateTA := float64(periodTotalRiskTA) / float64(periodTotalCountTA) * 100
+
+	r.preTotalSafeTA = phalanxMetrics.TASafeCommandCount
+	r.preTotalRiskTA = phalanxMetrics.TARiskCommandCount
+
 	r.thrus += fmt.Sprintf(
 		"Time: %.2f s. "+
 			"Throughput: %.2f txs/s, Latency: %.2f, "+
 			"Safe Rate: %.2f%%, Risk Rate: %.2f%%, "+
 			"Safe Rate (M): %.2f%%, Risk Rate (M): %.2f%%, "+
+			"Safe Rate (TA): %.2f%%, Risk Rate (TA): %.2f%%, "+
 			"%.1fms(p), %.1fms(c), %.1fms(s), %.1fms(o)\n",
 		time.Now().Sub(r.startTime).Seconds(),
 		nodeQuery.Throughput, nodeQuery.Latency,
 		periodSafeRate, periodRiskRate,
 		periodSafeRateM, periodRiskRateM,
+		periodSafeRateTA, periodRiskRateTA,
 		phalanxMetrics.CurOrderLatency,
 		phalanxMetrics.CurLogLatency,
 		phalanxMetrics.CurCommitStreamLatency,
@@ -244,6 +262,19 @@ func (r *Replica) handleQuery(m message.Query) {
 	totalFrontAttackedIntervalRateM := float64(totalFrontAttackedIntervalM) / float64(totalFrontAttackedCommandsM) * 100
 	totalFrontAttackedGivenRateM := float64(totalFrontAttackedGivenM) / float64(totalFrontAttackedCommandsM) * 100
 
+	totalCommandsTA := phalanxMetrics.TASafeCommandCount + phalanxMetrics.TARiskCommandCount
+
+	safeFrontAttackedRateTA := float64(phalanxMetrics.TAFrontAttackFromSafe) / float64(totalCommandsTA) * 100
+	riskFrontAttackedRateTA := float64(phalanxMetrics.TAFrontAttackFromRisk) / float64(totalCommandsTA) * 100
+
+	totalFrontAttackedCommandsTA := phalanxMetrics.TAFrontAttackFromSafe + phalanxMetrics.TAFrontAttackFromRisk
+	totalFrontAttackedRateTA := float64(totalFrontAttackedCommandsTA) / float64(totalCommandsTA) * 100
+
+	totalFrontAttackedIntervalTA := phalanxMetrics.TAFrontAttackIntervalSafe + phalanxMetrics.TAFrontAttackIntervalRisk
+	totalFrontAttackedGivenTA := totalFrontAttackedCommandsTA - totalFrontAttackedIntervalTA
+	totalFrontAttackedIntervalRateTA := float64(totalFrontAttackedIntervalTA) / float64(totalFrontAttackedCommandsTA) * 100
+	totalFrontAttackedGivenRateTA := float64(totalFrontAttackedGivenTA) / float64(totalFrontAttackedCommandsTA) * 100
+
 	status := fmt.Sprintf(
 		"chain status is: %s\n"+
 			"Ave. block size is %v.\n"+
@@ -255,36 +286,7 @@ func (r *Replica) handleQuery(m message.Query) {
 			"Request rate is %f txs/s.\n"+
 			"Ave. round time is %f ms.\n"+
 			"Ave. Throughput is %f tx/s.\n"+
-			"Ave. Latency is %f ms.\n"+
-			"Ave. Latency of Phalanx\n"+
-			"     Select Command %f ms.\n"+
-			"     Generate Order Log %f ms.\n"+
-			"     Commit Order Log %f ms.\n"+
-			"     Commit Query Stream %f ms.\n"+
-			"     Commit Command Info %f ms.\n"+
-			"Ave. Order Size %d\n"+
-			"Phalanx Command Rate\n"+
-			"     Receive Rate %.2f\n"+
-			"     Log Rate %.2f\n"+
-			"     Gen Log Rate %.2f\n"+
-			"     Total Commands %d\n"+
-			"     Safe Committed Commands %d(%f%%)\n"+
-			"     Risk Committed Commands %d(%f%%)\n"+
-			"     Front Attacked Commands %d(%f%%)\n"+
-			"     Front Attacked From Safe %d(%f%%)\n"+
-			"     Front Attacked From Risk %d(%f%%)\n"+
-			"     Front Attacked Given %d(%f%%)\n"+
-			"     Front Attacked Interval %d(%f%%)\n"+
-			"Phalanx Command Rate Medium\n"+
-			"     Total Commands %d\n"+
-			"     Safe Committed Commands %d(%f%%)\n"+
-			"     Risk Committed Commands %d(%f%%)\n"+
-			"     Front Attacked Commands %d(%f%%)\n"+
-			"     Front Attacked From Safe %d(%f%%)\n"+
-			"     Front Attacked From Risk %d(%f%%)\n"+
-			"     Front Attacked Given %d(%f%%)\n"+
-			"     Front Attacked Interval %d(%f%%)\n"+
-			"Throughput is: \n%v",
+			"Ave. Latency is %f ms.\n",
 		r.Safety.GetChainStatus(),
 		nodeQuery.AveBlockSize,
 		nodeQuery.AvePayloadSize,
@@ -296,6 +298,20 @@ func (r *Replica) handleQuery(m message.Query) {
 		aveRoundTime,
 		nodeQuery.TThroughput,
 		nodeQuery.TLatency,
+	)
+
+	status += fmt.Sprintf(
+		"Ave. Latency of Phalanx\n"+
+			"     Select Command %f ms.\n"+
+			"     Generate Order Log %f ms.\n"+
+			"     Commit Order Log %f ms.\n"+
+			"     Commit Query Stream %f ms.\n"+
+			"     Commit Command Info %f ms.\n"+
+			"Ave. Rate of Phalanx\n"+
+			"     Order Size %d\n"+
+			"     Receive Rate %.2f\n"+
+			"     Log Rate %.2f\n"+
+			"     Gen Log Rate %.2f\n",
 		phalanxMetrics.AvePackOrderLatency,
 		phalanxMetrics.AveOrderLatency,
 		phalanxMetrics.AveLogLatency,
@@ -305,6 +321,39 @@ func (r *Replica) handleQuery(m message.Query) {
 		phalanxMetrics.CommandPS,
 		phalanxMetrics.LogPS,
 		phalanxMetrics.GenLogPS,
+	)
+
+	status += fmt.Sprintf(
+		"Phalanx Command Rate\n"+
+			"     Total Commands %d\n"+
+			"     Safe Committed Commands %d(%f%%)\n"+
+			"     Risk Committed Commands %d(%f%%)\n"+
+			"     Front Attacked Commands %d(%f%%)\n"+
+			"     Front Attacked From Safe %d(%f%%)\n"+
+			"     Front Attacked From Risk %d(%f%%)\n"+
+			"     Front Attacked Given %d(%f%%)\n"+
+			"     Front Attacked Interval %d(%f%%)\n"+
+			"     Success Rates %v\n"+
+			"Phalanx Command Rate Medium\n"+
+			"     Total Commands %d\n"+
+			"     Safe Committed Commands %d(%f%%)\n"+
+			"     Risk Committed Commands %d(%f%%)\n"+
+			"     Front Attacked Commands %d(%f%%)\n"+
+			"     Front Attacked From Safe %d(%f%%)\n"+
+			"     Front Attacked From Risk %d(%f%%)\n"+
+			"     Front Attacked Given %d(%f%%)\n"+
+			"     Front Attacked Interval %d(%f%%)\n"+
+			"     Success Rates %v\n"+
+			"Phalanx Command Rate Time Anchor\n"+
+			"     Total Commands %d\n"+
+			"     Safe Committed Commands %d(%f%%)\n"+
+			"     Risk Committed Commands %d(%f%%)\n"+
+			"     Front Attacked Commands %d(%f%%)\n"+
+			"     Front Attacked From Safe %d(%f%%)\n"+
+			"     Front Attacked From Risk %d(%f%%)\n"+
+			"     Front Attacked Given %d(%f%%)\n"+
+			"     Front Attacked Interval %d(%f%%)\n"+
+			"     Success Rates %v\n",
 		totalCommands,
 		phalanxMetrics.SafeCommandCount, safeRate,
 		phalanxMetrics.RiskCommandCount, riskRate,
@@ -313,6 +362,7 @@ func (r *Replica) handleQuery(m message.Query) {
 		phalanxMetrics.FrontAttackFromRisk, riskFrontAttackedRate,
 		totalFrontAttackedGiven, totalFrontAttackedGivenRate,
 		totalFrontAttackedInterval, totalFrontAttackedIntervalRate,
+		phalanxMetrics.SuccessRates,
 		totalCommandsM,
 		phalanxMetrics.MSafeCommandCount, safeRateM,
 		phalanxMetrics.MRiskCommandCount, riskRateM,
@@ -321,8 +371,20 @@ func (r *Replica) handleQuery(m message.Query) {
 		phalanxMetrics.MFrontAttackFromRisk, riskFrontAttackedRateM,
 		totalFrontAttackedGivenM, totalFrontAttackedGivenRateM,
 		totalFrontAttackedIntervalM, totalFrontAttackedIntervalRateM,
-		r.thrus,
+		phalanxMetrics.MSuccessRates,
+		totalCommandsTA,
+		phalanxMetrics.TASafeCommandCount, safeRateTA,
+		phalanxMetrics.TARiskCommandCount, riskRateTA,
+		totalFrontAttackedCommandsTA, totalFrontAttackedRateTA,
+		phalanxMetrics.TAFrontAttackFromSafe, safeFrontAttackedRateTA,
+		phalanxMetrics.TAFrontAttackFromRisk, riskFrontAttackedRateTA,
+		totalFrontAttackedGivenTA, totalFrontAttackedGivenRateTA,
+		totalFrontAttackedIntervalTA, totalFrontAttackedIntervalRateTA,
+		phalanxMetrics.TASuccessRates,
 	)
+
+	status += fmt.Sprintf("Throughput is: \n%v", r.thrus)
+
 	m.Reply(message.QueryReply{Info: status})
 }
 

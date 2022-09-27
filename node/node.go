@@ -101,6 +101,9 @@ func NewNode(id identity.NodeID, isByz bool) Node {
 	if idNum <= uint64(config.GetConfig().PhalanxByzNo) {
 		isPhalanxByz = true
 	}
+	//if idNum == uint64(2) {
+	//	isPhalanxByz = true
+	//}
 
 	count := len(config.Configuration.Addrs)
 
